@@ -2,6 +2,7 @@
 /**
  * Modern Bulk Mailer – 2026 Edition (Bootstrap 5)
  * ZeptoMail SMTP + Reply-To + Attachments + Validation + Live HTML Preview
+ * New placeholders: [-emailuser-] and [-emaildomain-]
  */
 
 // Show errors during testing (disable in production!)
@@ -37,6 +38,7 @@ if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
     if (isset($_POST['pass']) && $_POST['pass'] === $admin_password) {
         $_SESSION['auth'] = true;
     } else {
+        // Login page remains unchanged...
         ?>
         <!DOCTYPE html>
         <html lang="en" data-bs-theme="light">
@@ -98,19 +100,32 @@ function isDisposable($email) {
 }
 
 // ────────────────────────────────────────────────
-// PREVIEW HANDLER (for both initial and live updates)
+// PREVIEW HANDLER (updated for new placeholders)
 // ────────────────────────────────────────────────
 if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     $body_raw = $_POST['body'] ?? '';
 
+    // Extract user and domain from sample email
+    $sample_parts = explode('@', $preview_sample_email, 2);
+    $sample_user   = $sample_parts[0] ?? 'test';
+    $sample_domain = $sample_parts[1] ?? 'example.com';
+
     $body_preview = str_replace(
-        ['[-email-]', '[-time-]', '[-randommd5-]'],
-        [$preview_sample_email, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
+        [
+            '[-email-]', '[-time-]', '[-randommd5-]',
+            '[-emailuser-]', '[-emaildomain-]'
+        ],
+        [
+            $preview_sample_email,
+            date('Y-m-d H:i:s'),
+            md5(uniqid(rand(), true)),
+            $sample_user,
+            $sample_domain
+        ],
         $body_raw
     );
 
     $plain_preview = strip_tags($body_preview);
-
     ?>
     <div class="modal-content">
         <div class="modal-header">
@@ -150,7 +165,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
 }
 
 // ────────────────────────────────────────────────
-// SENDING LOGIC (unchanged)
+// SENDING LOGIC (updated for new placeholders)
 // ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
     $to_list      = trim($_POST['emails'] ?? '');
@@ -227,9 +242,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             continue;
         }
 
+        // Extract user and domain
+        $email_parts = explode('@', $email, 2);
+        $email_user   = $email_parts[0] ?? '';
+        $email_domain = $email_parts[1] ?? '';
+
         $body = str_replace(
-            ['[-email-]', '[-time-]', '[-randommd5-]'],
-            [$email, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
+            [
+                '[-email-]', '[-time-]', '[-randommd5-]',
+                '[-emailuser-]', '[-emaildomain-]'
+            ],
+            [
+                $email,
+                date('Y-m-d H:i:s'),
+                md5(uniqid(rand(), true)),
+                $email_user,
+                $email_domain
+            ],
             $body_raw
         );
 
@@ -344,8 +373,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                             <div class="mb-4">
                                 <label class="form-label">Message (HTML supported)</label>
-                                <textarea name="body" id="bodyEditor" class="form-control" rows="12" required placeholder="Hello [-email-],\n\nYour account was updated on [-time-].\nVerification code: [-randommd5-]\n\nBest regards,"></textarea>
-                                <div class="form-text mt-2">Placeholders: <code>[-email-]</code>, <code>[-time-]</code>, <code>[-randommd5-]</code></div>
+                                <textarea name="body" id="bodyEditor" class="form-control" rows="12" required placeholder="Hello [-email-],\nUsername: [-emailuser-]\nDomain: [-emaildomain-]\nUpdated on [-time-].\nCode: [-randommd5-]\n\nBest regards,"></textarea>
+                                <div class="form-text mt-2">
+                                    Placeholders: <code>[-email-]</code>, <code>[-emailuser-]</code>, <code>[-emaildomain-]</code>, <code>[-time-]</code>, <code>[-randommd5-]</code>
+                                </div>
                             </div>
 
                             <div class="mb-4">
@@ -355,7 +386,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                             <div class="mb-4">
                                 <label class="form-label">Recipients (one per line)</label>
-                                <textarea name="emails" class="form-control" rows="8" required placeholder="user1@example.com\nuser2@example.com\n..."></textarea>
+                                <textarea name="emails" class="form-control" rows="8" required placeholder="user1@gmail.com\njohn.doe@yahoo.com\n..."></textarea>
                                 <div class="form-text">Validated: syntax + DNS + disposable check</div>
                             </div>
 
@@ -395,7 +426,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         let previewModal = null;
         let debounceTimer = null;
 
-        // Function to fetch and update preview content
         function updatePreview() {
             const formData = new FormData();
             formData.append('action', 'preview');
@@ -411,39 +441,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             })
             .then(html => {
                 document.querySelector('#previewModal .modal-content').innerHTML = html;
-                // Re-init tabs if needed
-                const tabList = document.querySelectorAll('#previewTab button');
-                tabList.forEach(tab => {
-                    tab.addEventListener('shown.bs.tab', function () {
-                        // Optional: refresh layout if needed
-                    });
-                });
             })
             .catch(error => {
                 console.error('Preview update failed:', error);
             });
         }
 
-        // Open modal and start live updates
+        // Open modal
         previewBtn.addEventListener('click', function () {
             if (!previewModal) {
                 previewModal = new bootstrap.Modal(previewModalEl);
             }
-            updatePreview(); // initial load
+            updatePreview();
             previewModal.show();
         });
 
-        // Live update while typing (debounced)
+        // Live update on typing (debounced)
         bodyEditor.addEventListener('input', function () {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 if (previewModal && previewModalEl.classList.contains('show')) {
                     updatePreview();
                 }
-            }, 500); // 500ms debounce
+            }, 500);
         });
 
-        // Optional: update when modal is shown again
+        // Refresh when modal re-opens
         previewModalEl.addEventListener('shown.bs.modal', updatePreview);
     </script>
 </body>
