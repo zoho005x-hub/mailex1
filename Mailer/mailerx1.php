@@ -17,13 +17,13 @@ $smtp = [
     'port'       => 587,
     'secure'     => 'tls',
     'username'   => 'emailapikey',
-    'password'   => 'wSsVR613+0LyBqt0yTavdO4wyggHAVykHBh03Val6XP8Gv/E98c5khfMBwPyFaIYEjJuFTsW8Lp7n0oJhzJYjdh5z1AICSiF9mqRe1U4J3x17qnvhDzNWWhflxGPKY8Oww9rk2hjFMoq+g==',
-    'from_email' => 'postmail@treworgy-baldacci.cc,
+    'password'   => 'wSsVR613+EP2B617zjGpI+86ngxcUVv0QRh53VSnuSOpH6qQ8ccyxhecA1ekHKQcEDRsHGYXp7h6mxZR1jcKiogkyw4HWSiF9mqRe1U4J3x17qnvhDzDXWpZlROIL4IKzwlqm2NiEMgm+g==',
+    'from_email' => 'postmail@tghawaii.cc',
     'from_name'  => 'Your App Name',
 ];
 
 // Password protection
-$admin_password = "B0TH"; // ← CHANGE THIS!
+$admin_password = "4RR0WH43D"; // ← CHANGE THIS!
 
 // Delay between emails (microseconds) – helps avoid rate limits / blocks
 $delay_us = 150000; // 0.15 sec → ~400/hour safe-ish
