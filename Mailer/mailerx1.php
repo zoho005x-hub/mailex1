@@ -1,7 +1,7 @@
 <?php
 /**
  * Modern Bulk Mailer – 2026 Edition (Bootstrap 5)
- * ZeptoMail SMTP + Reply-To + Attachments + Email Validation
+ * ZeptoMail SMTP + Reply-To + Attachments + Email Validation + HTML Preview
  */
 
 // Show errors during testing (disable in production!)
@@ -24,9 +24,10 @@ $smtp = [
 
 $admin_password = "B0TH";          // ← CHANGE THIS!
 $delay_us       = 150000;           // 0.15 sec delay
-
-// Max attachment size per email (bytes) – adjust as needed
 $max_attach_size = 10 * 1024 * 1024; // 10 MB
+
+// Sample email for preview (personalization demo)
+$preview_sample_email = 'test.user@example.com';
 
 // ────────────────────────────────────────────────
 // PASSWORD PROTECTION
@@ -36,6 +37,7 @@ if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
     if (isset($_POST['pass']) && $_POST['pass'] === $admin_password) {
         $_SESSION['auth'] = true;
     } else {
+        // ... (login page remains the same)
         ?>
         <!DOCTYPE html>
         <html lang="en" data-bs-theme="light">
@@ -80,27 +82,81 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 // ────────────────────────────────────────────────
-// DISPOSABLE DOMAIN CHECK (2026 common list – expandable)
+// DISPOSABLE DOMAIN CHECK
 // ────────────────────────────────────────────────
 function isDisposable($email) {
     $domain = strtolower(substr(strrchr($email, "@"), 1));
     $disposableList = [
-        'mailinator.com', 'tempmail.com', '10minutemail.com', 'guerrillamail.com',
-        'yopmail.com', 'trashmail.com', 'sharklasers.com', 'dispostable.com',
-        'temp-mail.org', 'throwawaymail.com', 'maildrop.cc', 'getairmail.com',
-        'fakeinbox.com', '33mail.com', 'armyspy.com', 'cuvox.de', 'dayrep.com',
-        'einrot.com', 'fleckens.hu', 'gustr.com', 'jourrapide.com', 'rhyta.com',
-        'superrito.com', 'armyspy.com', 'cuvox.de', 'teleworm.us', 'webbox.us',
-        'mobimail.ga', 'temp-mail.io', 'moakt.com', 'mail.tm', 'tempmail.plus',
-        // Add more from https://github.com/disposable-email-domains/disposable-email-domains if needed
+        'mailinator.com','tempmail.com','10minutemail.com','guerrillamail.com',
+        'yopmail.com','trashmail.com','sharklasers.com','dispostable.com',
+        'temp-mail.org','throwawaymail.com','maildrop.cc','getairmail.com',
+        'fakeinbox.com','33mail.com','armyspy.com','cuvox.de','dayrep.com',
+        'einrot.com','fleckens.hu','gustr.com','jourrapide.com','rhyta.com',
+        'superrito.com','teleworm.us','webbox.us','mobimail.ga','temp-mail.io',
+        'moakt.com','mail.tm','tempmail.plus',
+        // expand as needed
     ];
     return in_array($domain, $disposableList);
 }
 
 // ────────────────────────────────────────────────
-// SENDING LOGIC
+// HANDLE PREVIEW REQUEST (AJAX-like via POST)
+if (isset($_POST['action']) && $_POST['action'] === 'preview') {
+    $body_raw = $_POST['body'] ?? '';
+    $email_sample = $preview_sample_email;
+
+    $body_preview = str_replace(
+        ['[-email-]', '[-time-]', '[-randommd5-]'],
+        [$email_sample, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
+        $body_raw
+    );
+
+    $plain_preview = strip_tags($body_preview);
+
+    ?>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">Message Preview</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <h6>Sample recipient:</h6>
+            <p><code><?= htmlspecialchars($email_sample) ?></code></p>
+
+            <ul class="nav nav-tabs" id="previewTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="html-tab" data-bs-toggle="tab" data-bs-target="#html" type="button" role="tab">HTML View</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="plain-tab" data-bs-toggle="tab" data-bs-target="#plain" type="button" role="tab">Plain Text</button>
+                </li>
+            </ul>
+
+            <div class="tab-content border border-top-0 p-3 mt-0 rounded-bottom" style="min-height: 300px; background:#fff;">
+                <div class="tab-pane fade show active" id="html" role="tabpanel">
+                    <div style="border:1px solid #ddd; padding:20px; border-radius:8px; background:#f9f9f9;">
+                        <?= $body_preview ?>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="plain" role="tabpanel">
+                    <pre style="white-space: pre-wrap; background:#f8f9fa; padding:15px; border-radius:6px;"><?= htmlspecialchars($plain_preview) ?></pre>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+    </div>
+    <?php
+    exit;
+}
+
+// ────────────────────────────────────────────────
+// SENDING LOGIC (unchanged except attachments & validation)
 // ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
+    // ... (the sending code remains almost identical to your previous version)
+
     $to_list      = trim($_POST['emails'] ?? '');
     $subject_raw  = trim($_POST['subject'] ?? '');
     $body_raw     = $_POST['body'] ?? '';
@@ -110,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     $emails = array_filter(array_map('trim', explode("\n", $to_list)));
 
-    // Handle attachments
+    // Attachments handling (same as before)
     $attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
         foreach ($_FILES['attachments']['tmp_name'] as $key => $tmp_name) {
@@ -119,22 +175,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $file_size = $_FILES['attachments']['size'][$key];
                 $file_type = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
 
-                // Basic security: allowed types & size
-                $allowed = ['pdf', 'jpg', 'jpeg', 'png', 'txt', 'doc', 'docx', 'zip', 'rar'];
+                $allowed = ['pdf','jpg','jpeg','png','txt','doc','docx','zip','rar'];
                 if (in_array($file_type, $allowed) && $file_size <= $max_attach_size) {
-                    $attachments[] = [
-                        'path' => $tmp_name,
-                        'name' => $file_name
-                    ];
-                } else {
-                    // Log invalid attachment but continue
-                    error_log("Invalid attachment skipped: $file_name");
+                    $attachments[] = ['path' => $tmp_name, 'name' => $file_name];
                 }
             }
         }
     }
 
-    // Progress page
+    // Progress page (same structure)
     ob_start();
     ?>
     <!DOCTYPE html>
@@ -160,16 +209,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     <h4 class="mb-0"><i class="bi bi-send me-2"></i>Sending in Progress</h4>
                 </div>
                 <div class="card-body">
-                    <p class="lead">Do not close this tab until finished. <?= count($attachments) ? 'Attachments: ' . count($attachments) : 'No attachments' ?></p>
-                    <pre>
-    <?php
+                    <p class="lead">Do not close this tab. <?= count($attachments) ? 'Attachments: ' . count($attachments) : 'No attachments' ?></p>
+                    <pre><?php
     $count   = 0;
     $success = 0;
 
     foreach ($emails as $email) {
         $count++;
 
-        // Validation steps
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             echo "[$count] $email → <span class='status-fail'>Invalid format</span>\n";
             continue;
@@ -214,7 +261,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $mail->Body    = $body;
             $mail->AltBody = strip_tags($body);
 
-            // Add attachments to this email
             foreach ($attachments as $att) {
                 $mail->addAttachment($att['path'], $att['name']);
             }
@@ -232,17 +278,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         usleep($delay_us);
     }
 
-    // Clean up temp files (good practice)
     foreach ($attachments as $att) {
         @unlink($att['path']);
     }
 
     echo "\nFinished.\nSuccessful: $success / " . count($emails) . "\n";
-    ?>
-                    </pre>
+    ?></pre>
                 </div>
                 <div class="card-footer text-center">
-                    <a href="?" class="btn btn-outline-primary"><i class="bi bi-arrow-left me-2"></i>Back to Form</a>
+                    <a href="?" class="btn btn-outline-primary"><i class="bi bi-arrow-left me-2"></i>Back</a>
                 </div>
             </div>
         </div>
@@ -268,6 +312,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .btn-primary { background: #0d6efd; border: none; }
         .btn-primary:hover { background: #0b5ed7; }
         .note { font-size: 0.9rem; color: #6c757d; }
+        #previewModal .modal-dialog { max-width: 800px; }
+        #previewModal .modal-body { max-height: 70vh; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -279,8 +325,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <h3 class="mb-0"><i class="bi bi-envelope-at me-2"></i>4RR0W H43D Bulk Mailer</h3>
                     </div>
                     <div class="card-body p-4 p-md-5">
-                        <form method="post" enctype="multipart/form-data">
-                            <input type="hidden" name="action" value="send">
+                        <form method="post" enctype="multipart/form-data" id="mailerForm">
+                            <input type="hidden" name="action" value="send" id="formAction">
 
                             <div class="mb-4">
                                 <label class="form-label">Sender Name</label>
@@ -304,7 +350,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                             <div class="mb-4">
                                 <label class="form-label">Message (HTML supported)</label>
-                                <textarea name="body" class="form-control" rows="8" required placeholder="Hello [-email-],\n\nYour account was updated on [-time-].\nVerification code: [-randommd5-]\n\nBest regards,"></textarea>
+                                <textarea name="body" id="bodyEditor" class="form-control" rows="10" required placeholder="Hello [-email-],\n\nYour account was updated on [-time-].\nVerification code: [-randommd5-]\n\nBest regards,"></textarea>
                                 <div class="form-text">Placeholders: [-email-], [-time-], [-randommd5-]</div>
                             </div>
 
@@ -315,19 +361,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                             <div class="mb-4">
                                 <label class="form-label">Recipients (one per line)</label>
-                                <textarea name="emails" class="form-control" rows="7" required placeholder="user1@example.com
-user2@example.com
-..."></textarea>
-                                <div class="form-text">Emails are validated (syntax + DNS + disposable check). Test with 1–5 first!</div>
+                                <textarea name="emails" class="form-control" rows="7" required placeholder="user1@example.com\nuser2@example.com\n..."></textarea>
+                                <div class="form-text">Validated: syntax + DNS + disposable check</div>
                             </div>
 
-                            <button type="submit" class="btn btn-primary btn-lg w-100">
-                                <i class="bi bi-send me-2"></i>Start Sending
-                            </button>
+                            <div class="d-grid gap-3 d-md-flex justify-content-md-between">
+                                <button type="button" class="btn btn-outline-info btn-lg flex-fill" id="previewBtn">
+                                    <i class="bi bi-eye me-2"></i>Preview Message
+                                </button>
+                                <button type="submit" class="btn btn-primary btn-lg flex-fill">
+                                    <i class="bi bi-send me-2"></i>Start Sending
+                                </button>
+                            </div>
                         </form>
 
                         <div class="text-center mt-4 note">
-                            <strong>Created by 4RR0W H43D</strong> • Use responsibly • Attachments added to every email
+                            <strong>Created by 4RR0W H43D</strong> • Use responsibly
                         </div>
                     </div>
                 </div>
@@ -335,6 +384,35 @@ user2@example.com
         </div>
     </div>
 
+    <!-- Preview Modal -->
+    <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <!-- Content loaded via JS -->
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('previewBtn').addEventListener('click', function() {
+            const formData = new FormData(document.getElementById('mailerForm'));
+            formData.set('action', 'preview'); // override to preview mode
+
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(html => {
+                document.querySelector('#previewModal .modal-content').innerHTML = html;
+                const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+                modal.show();
+            })
+            .catch(err => {
+                alert('Preview failed: ' + err);
+            });
+        });
+    </script>
 </body>
 </html>
