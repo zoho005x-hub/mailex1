@@ -26,7 +26,7 @@ $admin_password = "B0TH";          // ← CHANGE THIS!
 $delay_us       = 150000;           // 0.15 sec delay
 $max_attach_size = 10 * 1024 * 1024; // 10 MB
 
-// Sample email for preview (personalization demo)
+// Sample email used only for preview
 $preview_sample_email = 'test.user@example.com';
 
 // ────────────────────────────────────────────────
@@ -37,7 +37,6 @@ if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
     if (isset($_POST['pass']) && $_POST['pass'] === $admin_password) {
         $_SESSION['auth'] = true;
     } else {
-        // ... (login page remains the same)
         ?>
         <!DOCTYPE html>
         <html lang="en" data-bs-theme="light">
@@ -94,25 +93,23 @@ function isDisposable($email) {
         'einrot.com','fleckens.hu','gustr.com','jourrapide.com','rhyta.com',
         'superrito.com','teleworm.us','webbox.us','mobimail.ga','temp-mail.io',
         'moakt.com','mail.tm','tempmail.plus',
-        // expand as needed
     ];
     return in_array($domain, $disposableList);
 }
 
 // ────────────────────────────────────────────────
-// HANDLE PREVIEW REQUEST (AJAX-like via POST)
+// PREVIEW HANDLER
+// ────────────────────────────────────────────────
 if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     $body_raw = $_POST['body'] ?? '';
-    $email_sample = $preview_sample_email;
 
     $body_preview = str_replace(
         ['[-email-]', '[-time-]', '[-randommd5-]'],
-        [$email_sample, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
+        [$preview_sample_email, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
         $body_raw
     );
 
     $plain_preview = strip_tags($body_preview);
-
     ?>
     <div class="modal-content">
         <div class="modal-header">
@@ -120,26 +117,24 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-            <h6>Sample recipient:</h6>
-            <p><code><?= htmlspecialchars($email_sample) ?></code></p>
+            <h6>Preview for sample recipient:</h6>
+            <p><code><?= htmlspecialchars($preview_sample_email) ?></code></p>
 
             <ul class="nav nav-tabs" id="previewTab" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="html-tab" data-bs-toggle="tab" data-bs-target="#html" type="button" role="tab">HTML View</button>
+                    <button class="nav-link active" id="html-tab" data-bs-toggle="tab" data-bs-target="#html" type="button" role="tab">Rendered HTML</button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="plain-tab" data-bs-toggle="tab" data-bs-target="#plain" type="button" role="tab">Plain Text</button>
                 </li>
             </ul>
 
-            <div class="tab-content border border-top-0 p-3 mt-0 rounded-bottom" style="min-height: 300px; background:#fff;">
+            <div class="tab-content border border-top-0 p-4 mt-0 rounded-bottom bg-white" style="min-height: 350px;">
                 <div class="tab-pane fade show active" id="html" role="tabpanel">
-                    <div style="border:1px solid #ddd; padding:20px; border-radius:8px; background:#f9f9f9;">
-                        <?= $body_preview ?>
-                    </div>
+                    <?= $body_preview ?>
                 </div>
                 <div class="tab-pane fade" id="plain" role="tabpanel">
-                    <pre style="white-space: pre-wrap; background:#f8f9fa; padding:15px; border-radius:6px;"><?= htmlspecialchars($plain_preview) ?></pre>
+                    <pre class="bg-light p-3 rounded" style="white-space: pre-wrap;"><?= htmlspecialchars($plain_preview) ?></pre>
                 </div>
             </div>
         </div>
@@ -152,11 +147,9 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
 }
 
 // ────────────────────────────────────────────────
-// SENDING LOGIC (unchanged except attachments & validation)
+// SENDING LOGIC
 // ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
-    // ... (the sending code remains almost identical to your previous version)
-
     $to_list      = trim($_POST['emails'] ?? '');
     $subject_raw  = trim($_POST['subject'] ?? '');
     $body_raw     = $_POST['body'] ?? '';
@@ -166,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     $emails = array_filter(array_map('trim', explode("\n", $to_list)));
 
-    // Attachments handling (same as before)
+    // Attachments
     $attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
         foreach ($_FILES['attachments']['tmp_name'] as $key => $tmp_name) {
@@ -183,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
 
-    // Progress page (same structure)
+    // Progress output
     ob_start();
     ?>
     <!DOCTYPE html>
@@ -196,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
         <style>
             body { padding: 2rem; background-color: #f8f9fa; }
-            pre { background: #fff; border: 1px solid #dee2e6; padding: 1.5rem; border-radius: 0.5rem; max-height: 70vh; overflow-y: auto; font-size: 0.95rem; }
+            pre { background: #fff; border: 1px solid #dee2e6; padding: 1.5rem; border-radius: 0.5rem; max-height: 70vh; overflow-y: auto; font-size: 0.95rem; white-space: pre-wrap; }
             .status-ok    { color: #198754; font-weight: bold; }
             .status-fail  { color: #dc3545; font-weight: bold; }
             .status-warn  { color: #fd7e14; }
@@ -286,7 +279,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     ?></pre>
                 </div>
                 <div class="card-footer text-center">
-                    <a href="?" class="btn btn-outline-primary"><i class="bi bi-arrow-left me-2"></i>Back</a>
+                    <a href="?" class="btn btn-outline-primary"><i class="bi bi-arrow-left me-2"></i>Back to Form</a>
                 </div>
             </div>
         </div>
@@ -312,14 +305,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .btn-primary { background: #0d6efd; border: none; }
         .btn-primary:hover { background: #0b5ed7; }
         .note { font-size: 0.9rem; color: #6c757d; }
-        #previewModal .modal-dialog { max-width: 800px; }
-        #previewModal .modal-body { max-height: 70vh; overflow-y: auto; }
+        #previewModal .modal-dialog { max-width: 900px; }
+        #previewModal .modal-body { max-height: 75vh; overflow-y: auto; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="row justify-content-center">
-            <div class="col-lg-8 col-xl-7">
+            <div class="col-lg-9 col-xl-8">
                 <div class="card">
                     <div class="card-header text-center py-4">
                         <h3 class="mb-0"><i class="bi bi-envelope-at me-2"></i>4RR0W H43D Bulk Mailer</h3>
@@ -350,8 +343,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                             <div class="mb-4">
                                 <label class="form-label">Message (HTML supported)</label>
-                                <textarea name="body" id="bodyEditor" class="form-control" rows="10" required placeholder="Hello [-email-],\n\nYour account was updated on [-time-].\nVerification code: [-randommd5-]\n\nBest regards,"></textarea>
-                                <div class="form-text">Placeholders: [-email-], [-time-], [-randommd5-]</div>
+                                <textarea name="body" id="bodyEditor" class="form-control" rows="12" required placeholder="Hello [-email-],\n\nYour account was updated on [-time-].\nVerification code: [-randommd5-]\n\nBest regards,"></textarea>
+                                <div class="form-text mt-2">Placeholders: <code>[-email-]</code>, <code>[-time-]</code>, <code>[-randommd5-]</code></div>
                             </div>
 
                             <div class="mb-4">
@@ -361,7 +354,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                             <div class="mb-4">
                                 <label class="form-label">Recipients (one per line)</label>
-                                <textarea name="emails" class="form-control" rows="7" required placeholder="user1@example.com\nuser2@example.com\n..."></textarea>
+                                <textarea name="emails" class="form-control" rows="8" required placeholder="user1@example.com\nuser2@example.com\n..."></textarea>
                                 <div class="form-text">Validated: syntax + DNS + disposable check</div>
                             </div>
 
@@ -376,7 +369,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         </form>
 
                         <div class="text-center mt-4 note">
-                            <strong>Created by 4RR0W H43D</strong> • Use responsibly
+                            <strong>Created by 4RR0W H43D</strong> • Use responsibly • Test small batches first
                         </div>
                     </div>
                 </div>
@@ -386,31 +379,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     <!-- Preview Modal -->
     <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
-                <!-- Content loaded via JS -->
+                <!-- Content loaded dynamically -->
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        document.getElementById('previewBtn').addEventListener('click', function() {
-            const formData = new FormData(document.getElementById('mailerForm'));
-            formData.set('action', 'preview'); // override to preview mode
+        // Preview button handler
+        document.getElementById('previewBtn').addEventListener('click', function () {
+            const form = document.getElementById('mailerForm');
+            const formData = new FormData(form);
+            formData.set('action', 'preview'); // switch to preview mode
 
             fetch('', {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.text())
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.text();
+            })
             .then(html => {
                 document.querySelector('#previewModal .modal-content').innerHTML = html;
                 const modal = new bootstrap.Modal(document.getElementById('previewModal'));
                 modal.show();
             })
-            .catch(err => {
-                alert('Preview failed: ' + err);
+            .catch(error => {
+                alert('Preview failed: ' + error.message);
+                console.error(error);
             });
         });
     </script>
