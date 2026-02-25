@@ -1,7 +1,7 @@
 <?php
 /**
  * Modern Bulk Mailer – 2026 Edition (Bootstrap 5)
- * ZeptoMail SMTP + Reply-To + Attachments + Email Validation + HTML Preview
+ * ZeptoMail SMTP + Reply-To + Attachments + Validation + Live HTML Preview
  */
 
 // Show errors during testing (disable in production!)
@@ -26,7 +26,7 @@ $admin_password = "B0TH";          // ← CHANGE THIS!
 $delay_us       = 150000;           // 0.15 sec delay
 $max_attach_size = 10 * 1024 * 1024; // 10 MB
 
-// Sample email used only for preview
+// Sample email for live preview
 $preview_sample_email = 'test.user@example.com';
 
 // ────────────────────────────────────────────────
@@ -98,7 +98,7 @@ function isDisposable($email) {
 }
 
 // ────────────────────────────────────────────────
-// PREVIEW HANDLER
+// PREVIEW HANDLER (for both initial and live updates)
 // ────────────────────────────────────────────────
 if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     $body_raw = $_POST['body'] ?? '';
@@ -110,10 +110,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     );
 
     $plain_preview = strip_tags($body_preview);
+
     ?>
     <div class="modal-content">
         <div class="modal-header">
-            <h5 class="modal-title">Message Preview</h5>
+            <h5 class="modal-title">Live Message Preview</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
@@ -129,12 +130,14 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
                 </li>
             </ul>
 
-            <div class="tab-content border border-top-0 p-4 mt-0 rounded-bottom bg-white" style="min-height: 350px;">
+            <div class="tab-content border border-top-0 p-4 mt-0 rounded-bottom bg-white" style="min-height: 400px;">
                 <div class="tab-pane fade show active" id="html" role="tabpanel">
-                    <?= $body_preview ?>
+                    <div class="border p-4 rounded bg-light">
+                        <?= $body_preview ?>
+                    </div>
                 </div>
                 <div class="tab-pane fade" id="plain" role="tabpanel">
-                    <pre class="bg-light p-3 rounded" style="white-space: pre-wrap;"><?= htmlspecialchars($plain_preview) ?></pre>
+                    <pre class="bg-light p-3 rounded" style="white-space: pre-wrap; font-family: monospace;"><?= htmlspecialchars($plain_preview) ?></pre>
                 </div>
             </div>
         </div>
@@ -147,7 +150,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
 }
 
 // ────────────────────────────────────────────────
-// SENDING LOGIC
+// SENDING LOGIC (unchanged)
 // ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
     $to_list      = trim($_POST['emails'] ?? '');
@@ -159,7 +162,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     $emails = array_filter(array_map('trim', explode("\n", $to_list)));
 
-    // Attachments
     $attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
         foreach ($_FILES['attachments']['tmp_name'] as $key => $tmp_name) {
@@ -176,7 +178,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
 
-    // Progress output
     ob_start();
     ?>
     <!DOCTYPE html>
@@ -305,8 +306,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .btn-primary { background: #0d6efd; border: none; }
         .btn-primary:hover { background: #0b5ed7; }
         .note { font-size: 0.9rem; color: #6c757d; }
-        #previewModal .modal-dialog { max-width: 900px; }
-        #previewModal .modal-body { max-height: 75vh; overflow-y: auto; }
+        #previewModal .modal-dialog { max-width: 1000px; }
+        #previewModal .modal-body { max-height: 80vh; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -360,7 +361,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                             <div class="d-grid gap-3 d-md-flex justify-content-md-between">
                                 <button type="button" class="btn btn-outline-info btn-lg flex-fill" id="previewBtn">
-                                    <i class="bi bi-eye me-2"></i>Preview Message
+                                    <i class="bi bi-eye me-2"></i>Open Live Preview
                                 </button>
                                 <button type="submit" class="btn btn-primary btn-lg flex-fill">
                                     <i class="bi bi-send me-2"></i>Start Sending
@@ -369,7 +370,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         </form>
 
                         <div class="text-center mt-4 note">
-                            <strong>Created by 4RR0W H43D</strong> • Use responsibly • Test small batches first
+                            <strong>Created by 4RR0W H43D</strong> • Use responsibly • Live preview updates as you type
                         </div>
                     </div>
                 </div>
@@ -381,18 +382,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
-                <!-- Content loaded dynamically -->
+                <!-- Filled dynamically -->
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Preview button handler
-        document.getElementById('previewBtn').addEventListener('click', function () {
-            const form = document.getElementById('mailerForm');
-            const formData = new FormData(form);
-            formData.set('action', 'preview'); // switch to preview mode
+        const previewModalEl = document.getElementById('previewModal');
+        const previewBtn = document.getElementById('previewBtn');
+        const bodyEditor = document.getElementById('bodyEditor');
+        let previewModal = null;
+        let debounceTimer = null;
+
+        // Function to fetch and update preview content
+        function updatePreview() {
+            const formData = new FormData();
+            formData.append('action', 'preview');
+            formData.append('body', bodyEditor.value);
 
             fetch('', {
                 method: 'POST',
@@ -404,14 +411,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             })
             .then(html => {
                 document.querySelector('#previewModal .modal-content').innerHTML = html;
-                const modal = new bootstrap.Modal(document.getElementById('previewModal'));
-                modal.show();
+                // Re-init tabs if needed
+                const tabList = document.querySelectorAll('#previewTab button');
+                tabList.forEach(tab => {
+                    tab.addEventListener('shown.bs.tab', function () {
+                        // Optional: refresh layout if needed
+                    });
+                });
             })
             .catch(error => {
-                alert('Preview failed: ' + error.message);
-                console.error(error);
+                console.error('Preview update failed:', error);
             });
+        }
+
+        // Open modal and start live updates
+        previewBtn.addEventListener('click', function () {
+            if (!previewModal) {
+                previewModal = new bootstrap.Modal(previewModalEl);
+            }
+            updatePreview(); // initial load
+            previewModal.show();
         });
+
+        // Live update while typing (debounced)
+        bodyEditor.addEventListener('input', function () {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                if (previewModal && previewModalEl.classList.contains('show')) {
+                    updatePreview();
+                }
+            }, 500); // 500ms debounce
+        });
+
+        // Optional: update when modal is shown again
+        previewModalEl.addEventListener('shown.bs.modal', updatePreview);
     </script>
 </body>
 </html>
