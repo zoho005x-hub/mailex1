@@ -1,7 +1,7 @@
 <?php
 /**
  * Modern Bulk Mailer – 2026 Edition (Bootstrap 5)
- * ZeptoMail SMTP + Reply-To + Progress Feedback
+ * ZeptoMail SMTP + Reply-To + Attachments + Email Validation
  */
 
 // Show errors during testing (disable in production!)
@@ -24,6 +24,9 @@ $smtp = [
 
 $admin_password = "B0TH";          // ← CHANGE THIS!
 $delay_us       = 150000;           // 0.15 sec delay
+
+// Max attachment size per email (bytes) – adjust as needed
+$max_attach_size = 10 * 1024 * 1024; // 10 MB
 
 // ────────────────────────────────────────────────
 // PASSWORD PROTECTION
@@ -51,7 +54,7 @@ if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
             <div class="card login-card shadow-lg border-0">
                 <div class="card-body p-5 text-center">
                     <h3 class="mb-4"><i class="bi bi-shield-lock me-2"></i>Secure Access</h3>
-                    <form method="post">
+                    <form method="post" enctype="multipart/form-data">
                         <div class="mb-3">
                             <input type="password" name="pass" class="form-control form-control-lg" placeholder="Enter password" autofocus required>
                         </div>
@@ -77,17 +80,59 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 // ────────────────────────────────────────────────
+// DISPOSABLE DOMAIN CHECK (2026 common list – expandable)
+// ────────────────────────────────────────────────
+function isDisposable($email) {
+    $domain = strtolower(substr(strrchr($email, "@"), 1));
+    $disposableList = [
+        'mailinator.com', 'tempmail.com', '10minutemail.com', 'guerrillamail.com',
+        'yopmail.com', 'trashmail.com', 'sharklasers.com', 'dispostable.com',
+        'temp-mail.org', 'throwawaymail.com', 'maildrop.cc', 'getairmail.com',
+        'fakeinbox.com', '33mail.com', 'armyspy.com', 'cuvox.de', 'dayrep.com',
+        'einrot.com', 'fleckens.hu', 'gustr.com', 'jourrapide.com', 'rhyta.com',
+        'superrito.com', 'armyspy.com', 'cuvox.de', 'teleworm.us', 'webbox.us',
+        'mobimail.ga', 'temp-mail.io', 'moakt.com', 'mail.tm', 'tempmail.plus',
+        // Add more from https://github.com/disposable-email-domains/disposable-email-domains if needed
+    ];
+    return in_array($domain, $disposableList);
+}
+
+// ────────────────────────────────────────────────
 // SENDING LOGIC
 // ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
-    $to_list     = trim($_POST['emails'] ?? '');
-    $subject_raw = trim($_POST['subject'] ?? '');
-    $body_raw    = $_POST['body'] ?? '';
-    $sender_name = trim($_POST['sender_name'] ?? $smtp['from_name']);
-    $sender_email= trim($_POST['sender_email'] ?? $smtp['from_email']);
-    $reply_to    = trim($_POST['reply_to'] ?? '');
+    $to_list      = trim($_POST['emails'] ?? '');
+    $subject_raw  = trim($_POST['subject'] ?? '');
+    $body_raw     = $_POST['body'] ?? '';
+    $sender_name  = trim($_POST['sender_name'] ?? $smtp['from_name']);
+    $sender_email = trim($_POST['sender_email'] ?? $smtp['from_email']);
+    $reply_to     = trim($_POST['reply_to'] ?? '');
 
     $emails = array_filter(array_map('trim', explode("\n", $to_list)));
+
+    // Handle attachments
+    $attachments = [];
+    if (!empty($_FILES['attachments']['name'][0])) {
+        foreach ($_FILES['attachments']['tmp_name'] as $key => $tmp_name) {
+            if ($_FILES['attachments']['error'][$key] === UPLOAD_ERR_OK) {
+                $file_name = $_FILES['attachments']['name'][$key];
+                $file_size = $_FILES['attachments']['size'][$key];
+                $file_type = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+
+                // Basic security: allowed types & size
+                $allowed = ['pdf', 'jpg', 'jpeg', 'png', 'txt', 'doc', 'docx', 'zip', 'rar'];
+                if (in_array($file_type, $allowed) && $file_size <= $max_attach_size) {
+                    $attachments[] = [
+                        'path' => $tmp_name,
+                        'name' => $file_name
+                    ];
+                } else {
+                    // Log invalid attachment but continue
+                    error_log("Invalid attachment skipped: $file_name");
+                }
+            }
+        }
+    }
 
     // Progress page
     ob_start();
@@ -115,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     <h4 class="mb-0"><i class="bi bi-send me-2"></i>Sending in Progress</h4>
                 </div>
                 <div class="card-body">
-                    <p class="lead">Do not close this tab until finished.</p>
+                    <p class="lead">Do not close this tab until finished. <?= count($attachments) ? 'Attachments: ' . count($attachments) : 'No attachments' ?></p>
                     <pre>
     <?php
     $count   = 0;
@@ -124,8 +169,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     foreach ($emails as $email) {
         $count++;
 
+        // Validation steps
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            echo "[$count] $email → <span class='status-fail'>Invalid email</span>\n";
+            echo "[$count] $email → <span class='status-fail'>Invalid format</span>\n";
+            continue;
+        }
+
+        $domain = substr(strrchr($email, "@"), 1);
+        if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
+            echo "[$count] $email → <span class='status-fail'>No valid MX/A records</span>\n";
+            continue;
+        }
+
+        if (isDisposable($email)) {
+            echo "[$count] $email → <span class='status-fail'>Disposable domain</span>\n";
             continue;
         }
 
@@ -157,6 +214,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $mail->Body    = $body;
             $mail->AltBody = strip_tags($body);
 
+            // Add attachments to this email
+            foreach ($attachments as $att) {
+                $mail->addAttachment($att['path'], $att['name']);
+            }
+
             $mail->send();
             $success++;
             echo "[$count] $email → <span class='status-ok'>OK</span>\n";
@@ -168,6 +230,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         flush();
         ob_flush();
         usleep($delay_us);
+    }
+
+    // Clean up temp files (good practice)
+    foreach ($attachments as $att) {
+        @unlink($att['path']);
     }
 
     echo "\nFinished.\nSuccessful: $success / " . count($emails) . "\n";
@@ -212,7 +279,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <h3 class="mb-0"><i class="bi bi-envelope-at me-2"></i>4RR0W H43D Bulk Mailer</h3>
                     </div>
                     <div class="card-body p-4 p-md-5">
-                        <form method="post">
+                        <form method="post" enctype="multipart/form-data">
                             <input type="hidden" name="action" value="send">
 
                             <div class="mb-4">
@@ -242,11 +309,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             </div>
 
                             <div class="mb-4">
+                                <label class="form-label">Attachments <small class="text-muted">(pdf, jpg, png, txt, docx, zip – max 10MB total)</small></label>
+                                <input type="file" name="attachments[]" class="form-control form-control-lg" multiple>
+                            </div>
+
+                            <div class="mb-4">
                                 <label class="form-label">Recipients (one per line)</label>
                                 <textarea name="emails" class="form-control" rows="7" required placeholder="user1@example.com
 user2@example.com
 ..."></textarea>
-                                <div class="form-text">Test with 1–5 emails first!</div>
+                                <div class="form-text">Emails are validated (syntax + DNS + disposable check). Test with 1–5 first!</div>
                             </div>
 
                             <button type="submit" class="btn btn-primary btn-lg w-100">
@@ -255,7 +327,7 @@ user2@example.com
                         </form>
 
                         <div class="text-center mt-4 note">
-                            <strong>Created by 4RR0W H43D</strong> • Use responsibly • Test small batches
+                            <strong>Created by 4RR0W H43D</strong> • Use responsibly • Attachments added to every email
                         </div>
                     </div>
                 </div>
