@@ -1,16 +1,16 @@
 <?php
 /**
- * PHPMailer Bulk Sender for Azure App Service – 2026 Fixed Edition + Reply-To
- * Uses ZeptoMail SMTP (smtp.zeptomail.com)
- * Real-time progress, basic placeholders, better error visibility
+ * Modern Bulk Mailer – 2026 Edition (Bootstrap 5)
+ * ZeptoMail SMTP + Reply-To + Progress Feedback
  */
+
 // Show errors during testing (disable in production!)
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 // ────────────────────────────────────────────────
-// CONFIG – CHANGE THESE IF NEEDED
+// CONFIG
 // ────────────────────────────────────────────────
 $smtp = [
     'host'       => 'smtp.zeptomail.com',
@@ -22,11 +22,8 @@ $smtp = [
     'from_name'  => 'Your App Name',
 ];
 
-// Password protection
-$admin_password = "B0TH"; // ← CHANGE THIS!
-
-// Delay between emails (microseconds) – helps avoid rate limits / blocks
-$delay_us = 150000; // 0.15 sec → ~400/hour safe-ish
+$admin_password = "B0TH";          // ← CHANGE THIS!
+$delay_us       = 150000;           // 0.15 sec delay
 
 // ────────────────────────────────────────────────
 // PASSWORD PROTECTION
@@ -38,14 +35,30 @@ if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
     } else {
         ?>
         <!DOCTYPE html>
-        <html lang="en">
-        <head><meta charset="UTF-8"><title>Login</title></head>
-        <body style="text-align:center; margin-top:150px; font-family:Arial;">
-            <h2>Enter Password</h2>
-            <form method="post">
-                <input type="password" name="pass" size="35" autofocus required>
-                <button type="submit" style="padding:8px 16px;">Login</button>
-            </form>
+        <html lang="en" data-bs-theme="light">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Login - Bulk Mailer</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+            <style>
+                body { background: linear-gradient(135deg, #667eea, #764ba2); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+                .login-card { max-width: 420px; width: 100%; }
+            </style>
+        </head>
+        <body>
+            <div class="card login-card shadow-lg border-0">
+                <div class="card-body p-5 text-center">
+                    <h3 class="mb-4"><i class="bi bi-shield-lock me-2"></i>Secure Access</h3>
+                    <form method="post">
+                        <div class="mb-3">
+                            <input type="password" name="pass" class="form-control form-control-lg" placeholder="Enter password" autofocus required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-lg w-100">Login</button>
+                    </form>
+                </div>
+            </div>
         </body>
         </html>
         <?php
@@ -56,7 +69,6 @@ if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
 // ────────────────────────────────────────────────
 // LOAD PHPMailer
 // ────────────────────────────────────────────────
-// Manual includes (assuming folder structure: PHPMailer/src/ next to this file)
 require 'PHPMailer/src/Exception.php';
 require 'PHPMailer/src/PHPMailer.php';
 require 'PHPMailer/src/SMTP.php';
@@ -77,16 +89,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     $emails = array_filter(array_map('trim', explode("\n", $to_list)));
 
-    // Start output buffering + flush for progress
+    // Progress page
     ob_start();
-    echo "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Sending Progress</title>
-    <style>body{font-family:monospace;padding:20px;line-height:1.5;}
-           .ok{color:#006400;font-weight:bold;}
-           .fail{color:#8B0000;}
-           .warn{color:#DAA520;}
-           pre{background:#f8f8f8;padding:15px;border:1px solid #ccc;max-height:500px;overflow-y:auto;}</style></head><body>";
-    echo "<h2>Sending in progress... (do not close this tab)</h2><pre>";
-
+    ?>
+    <!DOCTYPE html>
+    <html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Sending Progress</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+        <style>
+            body { padding: 2rem; background-color: #f8f9fa; }
+            pre { background: #fff; border: 1px solid #dee2e6; padding: 1.5rem; border-radius: 0.5rem; max-height: 70vh; overflow-y: auto; font-size: 0.95rem; }
+            .status-ok    { color: #198754; font-weight: bold; }
+            .status-fail  { color: #dc3545; font-weight: bold; }
+            .status-warn  { color: #fd7e14; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="bi bi-send me-2"></i>Sending in Progress</h4>
+                </div>
+                <div class="card-body">
+                    <p class="lead">Do not close this tab until finished.</p>
+                    <pre>
+    <?php
     $count   = 0;
     $success = 0;
 
@@ -94,11 +125,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $count++;
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            echo "[$count] $email → <span class='fail'>invalid email</span>\n";
+            echo "[$count] $email → <span class='status-fail'>Invalid email</span>\n";
             continue;
         }
 
-        // Simple placeholders
         $body = str_replace(
             ['[-email-]', '[-time-]', '[-randommd5-]'],
             [$email, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
@@ -117,12 +147,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $mail->Port       = $smtp['port'];
 
             $mail->setFrom($sender_email, $sender_name);
-
-            // Add Reply-To if provided and valid
             if (!empty($reply_to) && filter_var($reply_to, FILTER_VALIDATE_EMAIL)) {
                 $mail->addReplyTo($reply_to);
             }
-
             $mail->addAddress($email);
 
             $mail->isHTML(true);
@@ -132,65 +159,110 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
             $mail->send();
             $success++;
-            echo "[$count] $email → <span class='ok'>OK</span>\n";
+            echo "[$count] $email → <span class='status-ok'>OK</span>\n";
         } catch (Exception $e) {
             $err = htmlspecialchars($mail->ErrorInfo);
-            echo "[$count] $email → <span class='fail'>Failed</span> – $err\n";
+            echo "[$count] $email → <span class='status-fail'>Failed</span> – $err\n";
         }
 
         flush();
         ob_flush();
-        usleep($delay_us); // Rate limit
+        usleep($delay_us);
     }
 
-    echo "\nFinished.\nSent successfully: $success / " . count($emails) . "\n";
-    echo "</pre><p><a href='?' style='font-size:1.1em;'>← Back to form</a></p></body></html>";
+    echo "\nFinished.\nSuccessful: $success / " . count($emails) . "\n";
+    ?>
+                    </pre>
+                </div>
+                <div class="card-footer text-center">
+                    <a href="?" class="btn btn-outline-primary"><i class="bi bi-arrow-left me-2"></i>Back to Form</a>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    <?php
     exit;
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="light">
 <head>
-<meta charset="UTF-8">
-<title>4RR0W H43D Bulk Mailer</title>
-<style>
-    body {font-family:Arial,sans-serif;max-width:900px;margin:40px auto;padding:20px;line-height:1.6;}
-    label {display:block;margin:14px 0 5px;font-weight:bold;}
-    input[type=text], input[type=email], textarea {width:100%;padding:9px;box-sizing:border-box;border:1px solid #ccc;border-radius:4px;}
-    textarea {height:160px;resize:vertical;}
-    button {padding:12px 28px;background:#0066cc;color:white;border:none;border-radius:5px;cursor:pointer;font-size:1.05em;margin-top:15px;}
-    button:hover {background:#0052a3;}
-    .note {color:#555;font-size:0.95em;margin-top:20px;}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>4RR0W H43D Bulk Mailer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background: #f0f2f5; padding: 2rem 1rem; }
+        .card { border: none; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border-radius: 12px; overflow: hidden; }
+        .card-header { background: linear-gradient(90deg, #0d6efd, #6610f2); color: white; }
+        .form-label { font-weight: 600; }
+        .btn-primary { background: #0d6efd; border: none; }
+        .btn-primary:hover { background: #0b5ed7; }
+        .note { font-size: 0.9rem; color: #6c757d; }
+    </style>
 </head>
 <body>
-<h2>4RR0W H43D Mass Email Sender powered by SMTP</h2>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8 col-xl-7">
+                <div class="card">
+                    <div class="card-header text-center py-4">
+                        <h3 class="mb-0"><i class="bi bi-envelope-at me-2"></i>4RR0W H43D Bulk Mailer</h3>
+                    </div>
+                    <div class="card-body p-4 p-md-5">
+                        <form method="post">
+                            <input type="hidden" name="action" value="send">
 
-<form method="post">
-    <input type="hidden" name="action" value="send">
+                            <div class="mb-4">
+                                <label class="form-label">Sender Name</label>
+                                <input type="text" name="sender_name" class="form-control form-control-lg" value="<?= htmlspecialchars($smtp['from_name']) ?>" required>
+                            </div>
 
-    <label>Sender Name</label>
-    <input type="text" name="sender_name" value="<?= htmlspecialchars($smtp['from_name']) ?>" required>
+                            <div class="mb-4">
+                                <label class="form-label">Sender Email</label>
+                                <input type="email" name="sender_email" class="form-control form-control-lg" value="<?= htmlspecialchars($smtp['from_email']) ?>" required readonly>
+                            </div>
 
-    <label>Sender Email (must not change)</label>
-    <input type="email" name="sender_email" value="<?= htmlspecialchars($smtp['from_email']) ?>" required>
+                            <div class="mb-4">
+                                <label class="form-label">Reply-To Email <small class="text-muted">(optional)</small></label>
+                                <input type="email" name="reply_to" class="form-control form-control-lg" placeholder="replies@yourdomain.com" value="<?= htmlspecialchars($smtp['from_email']) ?>">
+                            </div>
 
-    <label>Reply-To Email <small>(optional – where replies will go)</small></label>
-    <input type="email" name="reply_to" placeholder="replies@yourdomain.com" value="<?= htmlspecialchars($smtp['from_email']) ?>">
+                            <div class="mb-4">
+                                <label class="form-label">Subject</label>
+                                <input type="text" name="subject" class="form-control form-control-lg" required>
+                            </div>
 
-    <label>Subject</label>
-    <input type="text" name="subject" required>
+                            <div class="mb-4">
+                                <label class="form-label">Message (HTML supported)</label>
+                                <textarea name="body" class="form-control" rows="8" required placeholder="Hello [-email-],\n\nYour account was updated on [-time-].\nVerification code: [-randommd5-]\n\nBest regards,"></textarea>
+                                <div class="form-text">Placeholders: [-email-], [-time-], [-randommd5-]</div>
+                            </div>
 
-    <label>Message (HTML supported – placeholders: [-email-], [-time-], [-randommd5-])</label>
-    <textarea name="body" required placeholder="Hello [-email-],\n\nYour account was updated on [-time-].\nVerification code: [-randommd5-]\n\nBest regards,"></textarea>
+                            <div class="mb-4">
+                                <label class="form-label">Recipients (one per line)</label>
+                                <textarea name="emails" class="form-control" rows="7" required placeholder="user1@example.com
+user2@example.com
+..."></textarea>
+                                <div class="form-text">Test with 1–5 emails first!</div>
+                            </div>
 
-    <label>Recipients (one email per line – test with 1–3 first!)</label>
-    <textarea name="emails" required placeholder="test1@example.com
-test2@example.com"></textarea>
+                            <button type="submit" class="btn btn-primary btn-lg w-100">
+                                <i class="bi bi-send me-2"></i>Start Sending
+                            </button>
+                        </form>
 
-    <button type="submit">Start Sending</button>
-</form>
+                        <div class="text-center mt-4 note">
+                            <strong>Created by 4RR0W H43D</strong> • Use responsibly • Test small batches
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-<p class="note"><strong>Important:</strong> This Mass Email sender was created by 4RR0W H43D</p>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
