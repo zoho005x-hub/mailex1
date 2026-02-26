@@ -1,12 +1,17 @@
 <?php
+/**
+ * Compact Dark Bulk Mailer with TinyMCE – 2026 Edition
+ * SMTP hidden, sender email editable, persistent fields, CSV import support ready
+ */
+
 session_start();
 
-// Force error display
+// Force error display for debugging
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// CONFIG (SMTP hidden)
+// CONFIG – SMTP hidden
 $smtp = [
     'host'     => 'smtp.zeptomail.com',
     'port'     => 587,
@@ -18,11 +23,11 @@ $smtp = [
 
 $default_sender_email = 'postmail@treworgy-baldacci.cc';
 
-$admin_password = "B0TH"; // CHANGE THIS!
+$admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
 $max_attach_size = 10 * 1024 * 1024;
 
-// Restore saved fields
+// Restore saved data after sending
 $saved = $_SESSION['saved_form'] ?? [];
 $sender_name_val  = htmlspecialchars($saved['sender_name']  ?? $smtp['from_name']);
 $subject_val      = htmlspecialchars($saved['subject']      ?? '');
@@ -39,7 +44,7 @@ if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
     }
 }
 
-// PHPMailer requires (make sure these paths are correct!)
+// PHPMailer
 require 'PHPMailer/src/Exception.php';
 require 'PHPMailer/src/PHPMailer.php';
 require 'PHPMailer/src/SMTP.php';
@@ -96,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $body_raw     = $_POST['body'] ?? '';
     $to_list      = trim($_POST['emails'] ?? '');
 
-    // Save for next load
+    // Save for restore
     $_SESSION['saved_form'] = [
         'sender_name' => $sender_name,
         'subject'     => $subject_raw,
@@ -218,6 +223,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <title>4RR0W Mailer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- TinyMCE CDN -->
+    <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
     <style>
         body { background:#0d1117; color:#c9d1d9; padding:1rem; font-size:0.9rem; }
         .card { max-width:540px; margin:auto; border:1px solid #30363d; border-radius:8px; background:#161b22; box-shadow:0 1px 8px rgba(0,0,0,0.4); }
@@ -227,6 +234,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .btn-sm { font-size:0.85rem; padding:0.4rem 0.9rem; }
         .form-text { font-size:0.75rem; color:#8b949e; }
         .tight-mb { margin-bottom:0.5rem !important; }
+        .tox-tinymce { border:1px solid #30363d !important; background:#0d1117 !important; }
+        .tox-editor-container { background:#0d1117 !important; }
     </style>
 </head>
 <body>
@@ -235,7 +244,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             <i class="bi bi-envelope-at me-1"></i>4RR0W Mailer
         </div>
         <div class="card-body p-3">
-
             <form method="post" enctype="multipart/form-data" id="mailerForm">
                 <input type="hidden" name="action" value="send">
 
@@ -262,13 +270,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     </div>
                 </div>
 
-                <!-- TinyMCE delayed init -->
-                <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+                <!-- TinyMCE compact + delayed init -->
                 <script>
-                    let editorReady = false;
+                    let tinymceReady = false;
 
                     function loadTinyMCE() {
-                        if (editorReady) return;
+                        if (tinymceReady) return;
                         tinymce.init({
                             selector: '#bodyEditor',
                             height: 220,
@@ -278,20 +285,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             plugins: 'advlist lists link image code',
                             toolbar: 'undo redo | bold italic | bullist numlist | link image | code',
                             toolbar_mode: 'sliding',
+                            toolbar_location: 'top',
+                            toolbar_sticky: true,
                             content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#c9d1d9; background:#0d1117; margin:8px; }',
                             skin: 'oxide-dark',
                             content_css: 'dark',
                             setup: (editor) => {
                                 editor.on('init', () => {
                                     editor.focus();
-                                    console.log('TinyMCE initialized – ready to type/paste');
+                                    console.log('TinyMCE ready – you can now type/paste');
                                 });
                             }
                         });
-                        editorReady = true;
+                        tinymceReady = true;
                     }
 
-                    // Load TinyMCE only on preview click
+                    // Load & preview on button click
                     document.getElementById('previewBtn').addEventListener('click', () => {
                         loadTinyMCE();
                         setTimeout(() => {
@@ -307,7 +316,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                     modal.show();
                                 })
                                 .catch(e => console.error('Preview failed', e));
-                        }, 600); // increased delay for init
+                        }, 600);
                     });
                 </script>
 
@@ -318,7 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                 <div class="tight-mb">
                     <label class="form-label">Recipients</label>
-                    <textarea name="emails" class="form-control form-control-sm" rows="5" required></textarea>
+                    <textarea name="emails" class="form-control form-control-sm" rows="5" required placeholder="email1@example.com&#10;email2@example.com"></textarea>
                 </div>
 
                 <div class="d-flex gap-2">
@@ -332,7 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             </form>
 
             <div class="text-center mt-2 small text-muted">
-                4RR0W H43D • Dark Compact
+                4RR0W H43D • Compact Dark Mode
             </div>
         </div>
     </div>
@@ -341,7 +350,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <div class="modal fade" id="previewModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <!-- Filled dynamically -->
+                <!-- Filled by JS -->
             </div>
         </div>
     </div>
