@@ -1,13 +1,13 @@
 <?php
 /**
- * Modern Bulk Mailer – 2026 Dark Edition
- * SMTP hidden | From Email: username editable ("notification-docusign" default)
- * Persists: From Name, Reply-To, From Email Username, Subject, Message Body
+ * Full-Page Dark Bulk Mailer with TinyMCE Editor – 2026 Edition
+ * SMTP hidden, From Email username editable + domain fixed
+ * Persists: From Name, From Email username, Reply-To, Subject, Message body
  */
 
 session_start();
 
-// Force error display for debugging (remove in production)
+// Force error display for debugging
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -15,7 +15,7 @@ error_reporting(E_ALL);
 // ────────────────────────────────────────────────
 // CONFIG – SMTP hidden, domain fixed
 // ────────────────────────────────────────────────
-$smtp_domain = 'treworgy-baldacci.cc'; // fixed – not editable
+$smtp_domain = 'treworgy-baldacci.cc';
 
 $smtp = [
     'host'     => 'smtp.zeptomail.com',
@@ -26,22 +26,22 @@ $smtp = [
     'from_name'=> 'Your App Name',
 ];
 
-$default_sender_username = 'notification-docusign'; // your requested default
+$default_sender_username = 'notification-docusign';
 
 $admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
 $max_attach_size = 10 * 1024 * 1024;
 
-// Restore saved data after sending + Back
+// Restore saved data
 $saved = $_SESSION['saved_form'] ?? [];
 $sender_name_val     = htmlspecialchars($saved['sender_name'] ?? $smtp['from_name']);
 $sender_username_val = htmlspecialchars($saved['sender_username'] ?? $default_sender_username);
 $reply_to_val        = htmlspecialchars($saved['reply_to'] ?? '');
 $subject_val         = htmlspecialchars($saved['subject'] ?? '');
-$body_val            = $saved['body'] ?? ''; // raw HTML
+$body_val            = $saved['body'] ?? '';
 unset($_SESSION['saved_form']);
 
-// Full sender email (editable username + fixed domain)
+// Full sender email
 $sender_email = $sender_username_val . '@' . $smtp_domain;
 
 // ────────────────────────────────────────────────
@@ -123,7 +123,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     <?php exit;
 }
 
-// SENDING LOGIC + SAVE MORE FIELDS
+// SENDING LOGIC + SAVE FORM DATA
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
     $sender_username = trim($_POST['sender_username'] ?? $default_sender_username);
     $sender_email = $sender_username . '@' . $smtp_domain;
@@ -133,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $body_raw     = $_POST['body'] ?? '';
     $to_list      = trim($_POST['emails'] ?? '');
 
-    // Save ALL fields for restore
+    // Save all fields
     $_SESSION['saved_form'] = [
         'sender_name'     => $sender_name,
         'sender_username' => $sender_username,
@@ -257,126 +257,149 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <title>4RR0W H43D Bulk Mailer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- TinyMCE CDN -->
+    <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
     <style>
-        body { background:#0d1117; color:#c9d1d9; padding:1rem; font-size:0.9rem; }
-        .card { max-width:540px; margin:auto; border:1px solid #30363d; border-radius:8px; background:#161b22; box-shadow:0 1px 8px rgba(0,0,0,0.4); }
-        .card-header { background:#1f6feb; color:white; padding:0.75rem; text-align:center; font-weight:600; }
-        .form-label { font-size:0.85rem; margin-bottom:0.3rem; font-weight:600; }
-        .form-control-sm { font-size:0.85rem; padding:0.4rem 0.6rem; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
-        .btn-sm { font-size:0.85rem; padding:0.4rem 0.9rem; }
-        .form-text { font-size:0.75rem; color:#8b949e; }
-        .tight-mb { margin-bottom:0.5rem !important; }
-        .input-group-text { background:#21262d; color:#c9d1d9; border:1px solid #30363d; font-size:0.85rem; }
+        body { background:#0d1117; color:#c9d1d9; padding:1rem 0.5rem; margin:0; font-size:0.95rem; }
+        .container { max-width:100%; padding:0; }
+        .card { border:1px solid #30363d; border-radius:0; background:#161b22; box-shadow:none; margin:0; min-height:100vh; }
+        .card-header { background:#1f6feb; color:white; padding:1rem; text-align:center; font-weight:600; border-radius:0; }
+        .card-body { padding:1.5rem 1rem; }
+        .form-label { font-size:0.9rem; margin-bottom:0.4rem; font-weight:600; }
+        .form-control-sm { font-size:0.9rem; padding:0.5rem 0.75rem; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
+        .btn { font-size:0.95rem; padding:0.5rem 1rem; }
+        .form-text { font-size:0.8rem; color:#8b949e; }
+        .tight-mb { margin-bottom:0.75rem !important; }
+        .input-group-text { background:#21262d; color:#c9d1d9; border:1px solid #30363d; font-size:0.9rem; }
+        .tox-tinymce { border:1px solid #30363d !important; background:#0d1117 !important; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <div class="card-header">
-            <i class="bi bi-envelope-at me-1"></i>4RR0W H43D Bulk Mailer
-        </div>
-        <div class="card-body p-3">
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-envelope-at me-1"></i>4RR0W H43D Bulk Mailer
+            </div>
+            <div class="card-body p-3">
+                <form method="post" enctype="multipart/form-data" id="mailerForm">
+                    <input type="hidden" name="action" value="send">
 
-            <form method="post" enctype="multipart/form-data" id="mailerForm">
-                <input type="hidden" name="action" value="send">
-
-                <div class="tight-mb">
-                    <label class="form-label">From Name</label>
-                    <input type="text" name="sender_name" class="form-control form-control-sm" value="<?= $sender_name_val ?>" required>
-                </div>
-
-                <div class="tight-mb">
-                    <label class="form-label">From Email Username</label>
-                    <div class="input-group input-group-sm">
-                        <input type="text" name="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
-                        <span class="input-group-text">@<?= htmlspecialchars($smtp_domain) ?></span>
+                    <div class="tight-mb">
+                        <label class="form-label">From Name</label>
+                        <input type="text" name="sender_name" class="form-control form-control-sm" value="<?= $sender_name_val ?>" required>
                     </div>
-                    <div class="form-text text-danger small">Username editable • Domain fixed & verified in ZeptoMail</div>
-                </div>
 
-                <div class="tight-mb">
-                    <label class="form-label">Reply-To (optional)</label>
-                    <input type="email" name="reply_to" class="form-control form-control-sm" value="<?= $reply_to_val ?>" placeholder="replies@domain.com">
-                </div>
+                    <div class="tight-mb">
+                        <label class="form-label">From Email Username</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
+                            <span class="input-group-text">@<?= htmlspecialchars($smtp_domain) ?></span>
+                        </div>
+                        <div class="form-text text-danger small">Username editable • Domain fixed & verified in ZeptoMail</div>
+                    </div>
 
-                <div class="tight-mb">
-                    <label class="form-label">Subject</label>
-                    <input type="text" name="subject" class="form-control form-control-sm" value="<?= $subject_val ?>" required>
-                </div>
+                    <div class="tight-mb">
+                        <label class="form-label">Reply-To (optional)</label>
+                        <input type="email" name="reply_to" class="form-control form-control-sm" value="<?= $reply_to_val ?>" placeholder="replies@domain.com">
+                    </div>
 
-                <div class="tight-mb">
-                    <label class="form-label">Message (HTML supported)</label>
-                    <textarea name="body" id="bodyEditor" class="form-control" rows="8" required placeholder="Hello [-email-],\n\nYour account was updated on [-time-].\nVerification code: [-randommd5-]\n\nBest regards,"><?= htmlspecialchars($body_val) ?></textarea>
-                    <div class="form-text mt-2">Placeholders: <code>[-email-]</code>, <code>[-time-]</code>, <code>[-randommd5-]</code></div>
-                </div>
+                    <div class="tight-mb">
+                        <label class="form-label">Subject</label>
+                        <input type="text" name="subject" class="form-control form-control-sm" value="<?= $subject_val ?>" required>
+                    </div>
 
-                <div class="tight-mb">
-                    <label class="form-label">Attachments <small class="text-muted">(pdf, jpg, png, txt, docx, zip – max 10MB)</small></label>
-                    <input type="file" name="attachments[]" class="form-control form-control-sm" multiple>
-                </div>
+                    <div class="tight-mb">
+                        <label class="form-label">Message (WYSIWYG)</label>
+                        <textarea name="body" id="bodyEditor"><?= htmlspecialchars_decode($body_val) ?></textarea>
+                        <div class="form-text mt-1 small">
+                            Placeholders: [-email-] [-emailuser-] [-emaildomain-] [-time-] [-randommd5-]
+                        </div>
+                    </div>
 
-                <div class="tight-mb">
-                    <label class="form-label">Recipients (one per line)</label>
-                    <textarea name="emails" class="form-control form-control-sm" rows="6" required placeholder="user1@example.com\nuser2@example.com\n..."></textarea>
-                    <div class="form-text">Validated: syntax + DNS + disposable check</div>
-                </div>
+                    <!-- TinyMCE compact init -->
+                    <script>
+                        let tinymceReady = false;
 
-                <div class="d-grid gap-2 d-md-flex justify-content-md-between">
-                    <button type="button" class="btn btn-outline-info btn-lg flex-fill" id="previewBtn">
-                        <i class="bi bi-eye me-2"></i>Open Preview
-                    </button>
-                    <button type="submit" class="btn btn-primary btn-lg flex-fill">
-                        <i class="bi bi-send me-2"></i>Start Sending
-                    </button>
-                </div>
-            </form>
+                        function loadTinyMCE() {
+                            if (tinymceReady) return;
+                            tinymce.init({
+                                selector: '#bodyEditor',
+                                height: 260,
+                                menubar: false,
+                                statusbar: false,
+                                branding: false,
+                                plugins: 'advlist lists link image code',
+                                toolbar: 'undo redo | bold italic | bullist numlist | link image | code',
+                                toolbar_mode: 'sliding',
+                                toolbar_location: 'top',
+                                toolbar_sticky: true,
+                                content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#c9d1d9; background:#0d1117; margin:8px; }',
+                                skin: 'oxide-dark',
+                                content_css: 'dark',
+                                setup: (editor) => {
+                                    editor.on('init', () => {
+                                        editor.focus();
+                                        console.log('TinyMCE ready');
+                                    });
+                                }
+                            });
+                            tinymceReady = true;
+                        }
 
-            <div class="text-center mt-4 small text-muted">
-                <strong>Created by 4RR0W H43D</strong> • Dark mode • Test small batches
+                        document.getElementById('previewBtn').addEventListener('click', () => {
+                            loadTinyMCE();
+                            setTimeout(() => {
+                                const content = tinymce.get('bodyEditor')?.getContent() || document.getElementById('bodyEditor').value;
+                                const formData = new FormData(document.getElementById('mailerForm'));
+                                formData.set('action', 'preview');
+                                formData.set('body', content);
+                                fetch('', { method: 'POST', body: formData })
+                                    .then(r => r.text())
+                                    .then(html => {
+                                        document.querySelector('#previewModal .modal-content').innerHTML = html;
+                                        const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+                                        modal.show();
+                                    });
+                            }, 600);
+                        });
+                    </script>
+
+                    <div class="tight-mb">
+                        <label class="form-label">Attachments</label>
+                        <input type="file" name="attachments[]" class="form-control form-control-sm" multiple>
+                    </div>
+
+                    <div class="tight-mb">
+                        <label class="form-label">Recipients (one per line)</label>
+                        <textarea name="emails" class="form-control form-control-sm" rows="6" required placeholder="email1@example.com&#10;email2@example.com"></textarea>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-between">
+                        <button type="button" class="btn btn-outline-info btn-lg flex-fill" id="previewBtn">
+                            <i class="bi bi-eye me-2"></i>Open Preview
+                        </button>
+                        <button type="submit" class="btn btn-primary btn-lg flex-fill">
+                            <i class="bi bi-send me-2"></i>Start Sending
+                        </button>
+                    </div>
+                </form>
+
+                <div class="text-center mt-4 small text-muted">
+                    <strong>Created by 4RR0W H43D</strong> • Dark mode • Full page layout
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Preview Modal -->
-    <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+    <div class="modal fade" id="previewModal" tabindex="-1">
         <div class="modal-dialog modal-xl">
-            <div class="modal-content bg-dark text-light border-secondary">
+            <div class="modal-content">
                 <!-- Filled dynamically -->
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        const previewModalEl = document.getElementById('previewModal');
-        const previewBtn = document.getElementById('previewBtn');
-        let previewModal = null;
-
-        function updatePreview() {
-            const formData = new FormData(document.getElementById('mailerForm'));
-            formData.set('action', 'preview');
-
-            fetch('', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.text())
-            .then(html => {
-                document.querySelector('#previewModal .modal-content').innerHTML = html;
-            })
-            .catch(error => {
-                console.error('Preview failed:', error);
-            });
-        }
-
-        previewBtn.addEventListener('click', function () {
-            if (!previewModal) {
-                previewModal = new bootstrap.Modal(previewModalEl);
-            }
-            updatePreview();
-            previewModal.show();
-        });
-
-        previewModalEl.addEventListener('shown.bs.modal', updatePreview);
-    </script>
 </body>
 </html>
