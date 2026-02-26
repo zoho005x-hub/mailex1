@@ -1,13 +1,13 @@
 <?php
 /**
  * Modern Bulk Mailer – 2026 Dark Edition
- * SMTP hidden, From Email username editable + domain fixed
- * Persists: From Name, From Email username, Reply-To, Subject, Message body
+ * SMTP hidden | From Email: username editable ("notification-docusign" default)
+ * Persists: From Name, Reply-To, From Email Username, Subject, Message Body
  */
 
 session_start();
 
-// Force error display for debugging
+// Force error display for debugging (remove in production)
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -26,7 +26,7 @@ $smtp = [
     'from_name'=> 'Your App Name',
 ];
 
-$default_sender_username = 'postmail';
+$default_sender_username = 'notification-docusign'; // your requested default
 
 $admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
@@ -41,7 +41,7 @@ $subject_val         = htmlspecialchars($saved['subject'] ?? '');
 $body_val            = $saved['body'] ?? ''; // raw HTML
 unset($_SESSION['saved_form']);
 
-// Full sender email (built from editable username + fixed domain)
+// Full sender email (editable username + fixed domain)
 $sender_email = $sender_username_val . '@' . $smtp_domain;
 
 // ────────────────────────────────────────────────
@@ -125,7 +125,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
 
 // SENDING LOGIC + SAVE MORE FIELDS
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
-    $sender_username = trim($_POST['sender_username'] ?? explode('@', $default_sender_email)[0]);
+    $sender_username = trim($_POST['sender_username'] ?? $default_sender_username);
     $sender_email = $sender_username . '@' . $smtp_domain;
     $sender_name  = trim($_POST['sender_name'] ?? $smtp['from_name']);
     $reply_to     = trim($_POST['reply_to'] ?? '');
@@ -133,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $body_raw     = $_POST['body'] ?? '';
     $to_list      = trim($_POST['emails'] ?? '');
 
-    // Save ALL requested fields for restore after Back
+    // Save ALL fields for restore
     $_SESSION['saved_form'] = [
         'sender_name'     => $sender_name,
         'sender_username' => $sender_username,
@@ -287,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <div class="tight-mb">
                     <label class="form-label">From Email Username</label>
                     <div class="input-group input-group-sm">
-                        <input type="text" name="sender_username" class="form-control form-control-sm" value="<?= htmlspecialchars($saved_username ?? explode('@', $default_sender_email)[0]) ?>" required placeholder="username">
+                        <input type="text" name="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
                         <span class="input-group-text">@<?= htmlspecialchars($smtp_domain) ?></span>
                     </div>
                     <div class="form-text text-danger small">Username editable • Domain fixed & verified in ZeptoMail</div>
