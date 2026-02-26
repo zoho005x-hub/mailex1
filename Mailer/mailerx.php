@@ -1,13 +1,13 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE & Email Validation
- * Validates: From Username, Reply-To, Recipients
+ * Full-Page Dark Bulk Mailer with TinyMCE & DNS MX Validation
+ * Validates: From Username, Reply-To, Recipients format + DNS MX records
  * Persists: From Name, Username, Reply-To, Subject, Message body
  */
 
 session_start();
 
-// Force error display for debugging
+// Force error display for debugging (remove in production)
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -95,7 +95,6 @@ function isDisposable($email) {
 // VALIDATION FUNCTIONS
 // ────────────────────────────────────────────────
 function isValidEmailUsername($username) {
-    // Basic RFC 5322 local-part validation (simplified)
     return preg_match('/^[a-zA-Z0-9.!#$%&\'*+\/=?^_`{|}~-]{1,64}$/', $username);
 }
 
@@ -159,16 +158,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $errors[] = "Invalid Reply-To email address.";
     }
 
-    // Recipients
+    // Recipients – format + MX check
     $emails = array_filter(array_map('trim', explode("\n", $to_list)));
     if (empty($emails)) {
         $errors[] = "At least one recipient email is required.";
     } else {
+        $invalid_emails = [];
         foreach ($emails as $email) {
             if (!isValidEmail($email)) {
-                $errors[] = "Invalid recipient email: " . htmlspecialchars($email);
-                break; // stop on first invalid
+                $invalid_emails[] = $email . " (invalid format or disposable)";
+            } else {
+                $domain = substr(strrchr($email, "@"), 1);
+                if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
+                    $invalid_emails[] = $email . " (no MX or A record found)";
+                }
             }
+        }
+        if (!empty($invalid_emails)) {
+            $errors[] = "Invalid recipient emails:<br>" . implode("<br>", array_map('htmlspecialchars', $invalid_emails));
         }
     }
 
@@ -234,11 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $count++;
         $domain = substr(strrchr($email, "@"), 1);
         if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
-            echo "[$count] $email → <span class='fail'>no MX/A records</span>\n";
-            continue;
-        }
-        if (isDisposable($email)) {
-            echo "[$count] $email → <span class='fail'>disposable domain</span>\n";
+            echo "[$count] $email → <span class='fail'>no MX or A record</span>\n";
             continue;
         }
 
@@ -403,6 +406,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <label class="form-label">Recipients (one per line)</label>
                         <textarea name="emails" id="emails" class="form-control form-control-sm" rows="6" required placeholder="email1@example.com&#10;email2@example.com"></textarea>
                         <div id="recipientsError" class="error-message"></div>
+                        <div class="form-text small mt-1">Each email will be checked for valid format and DNS MX records before sending.</div>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-between mt-4">
@@ -436,7 +440,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         // Client-side validation
         function validateForm() {
             let valid = true;
-            const errors = {};
 
             // From Email Username
             const username = document.getElementById('sender_username').value.trim();
@@ -460,7 +463,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 }
             }
 
-            // Recipients
+            // Recipients – basic format check (MX done server-side)
             const recipientsText = document.getElementById('emails').value.trim();
             if (!recipientsText) {
                 document.getElementById('recipientsError').textContent = 'At least one recipient required';
@@ -479,7 +482,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         }
                     }
                     if (invalidFound) {
-                        document.getElementById('recipientsError').textContent = 'One or more recipient emails are invalid';
+                        document.getElementById('recipientsError').textContent = 'One or more recipient emails have invalid format';
                         valid = false;
                     } else {
                         document.getElementById('recipientsError').textContent = '';
@@ -490,7 +493,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             return valid;
         }
 
-        // Preview logic (fixed – no loop, reliable close)
+        // Preview logic (stable, no loop, closes correctly)
         const previewModalEl = document.getElementById('previewModal');
         const previewBtn = document.getElementById('previewBtn');
         let previewModal = null;
@@ -505,6 +508,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 .then(r => r.text())
                 .then(html => {
                     document.querySelector('#previewModal .modal-content').innerHTML = html;
+                    // Re-attach close button
                     const closeBtn = document.querySelector('#previewModal .btn-close');
                     if (closeBtn) {
                         closeBtn.onclick = () => {
