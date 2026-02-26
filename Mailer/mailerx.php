@@ -1,13 +1,13 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE – Previous Working Version
+ * Full-Page Dark Bulk Mailer with TinyMCE (API key added)
  * SMTP hidden | From Email username editable + domain fixed
  * Persists: From Name, Username, Reply-To, Subject, Message body
  */
 
 session_start();
 
-// Force error display for debugging
+// Force error display for debugging (remove in production)
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -258,8 +258,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     
-    <!-- TinyMCE CDN -->
-    <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+    <!-- TinyMCE with your API key -->
+    <script src="https://cdn.tiny.cloud/1/zza75uc5aisnrmt8km3mj0hwei4yoqccp134hst3arcbe65j/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
 
     <style>
         body { background:#0d1117; color:#c9d1d9; padding:1rem; margin:0; font-size:0.95rem; }
@@ -313,21 +313,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     </div>
 
                     <div class="tight-mb">
-                        <label class="form-label">Message (TinyMCE)</label>
+                        <label class="form-label">Message (TinyMCE Editor)</label>
                         <textarea name="body" id="bodyEditor"><?= htmlspecialchars($body_val) ?></textarea>
                         <div class="form-text mt-1 small">
                             Placeholders: [-email-] [-emailuser-] [-emaildomain-] [-time-] [-randommd5-]
                         </div>
                     </div>
 
-                    <!-- TinyMCE – immediate load + ultra-compact toolbar -->
+                    <!-- TinyMCE with your API key – loads immediately -->
                     <script>
                         tinymce.init({
                             selector: '#bodyEditor',
-                            height: 240,
+                            height: 260,
                             menubar: false,
                             statusbar: false,
                             branding: false,
+                            apiKey: 'zza75uc5aisnrmt8km3mj0hwei4yoqccp134hst3arcbe65j',
                             plugins: 'advlist lists link code',
                             toolbar: 'undo redo bold italic bullist numlist link code',
                             toolbar_mode: 'sliding',
@@ -338,8 +339,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             content_css: 'dark',
                             setup: (editor) => {
                                 editor.on('init', () => {
-                                    editor.focus();
-                                    console.log('TinyMCE loaded – compact toolbar ready');
+                                    editor.focus(); // auto-focus so typing/pasting works immediately
+                                    console.log('TinyMCE initialized with your API key');
                                 });
                             }
                         });
@@ -366,7 +367,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 </form>
 
                 <div class="text-center mt-4 small text-muted">
-                    <strong>Created by 4RR0W H43D</strong> • Dark mode • TinyMCE
+                    <strong>Created by 4RR0W H43D</strong> • Dark mode • TinyMCE (API key added)
                 </div>
             </div>
         </div>
