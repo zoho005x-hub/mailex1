@@ -1,6 +1,6 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE Editor – 2026 Edition
+ * Full-Page Dark Bulk Mailer with TinyMCE – Immediate Load
  * SMTP hidden, From Email username editable + domain fixed
  * Persists: From Name, From Email username, Reply-To, Subject, Message body
  */
@@ -260,11 +260,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <!-- TinyMCE CDN -->
     <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
     <style>
-        body { background:#0d1117; color:#c9d1d9; padding:1rem 0.5rem; margin:0; font-size:0.95rem; }
+        body { background:#0d1117; color:#c9d1d9; padding:1rem; margin:0; font-size:0.95rem; }
         .container { max-width:100%; padding:0; }
-        .card { border:1px solid #30363d; border-radius:0; background:#161b22; box-shadow:none; margin:0; min-height:100vh; }
+        .card { border:1px solid #30363d; border-radius:0; background:#161b22; box-shadow:none; min-height:100vh; margin:0; }
         .card-header { background:#1f6feb; color:white; padding:1rem; text-align:center; font-weight:600; border-radius:0; }
-        .card-body { padding:1.5rem 1rem; }
+        .card-body { padding:1.5rem 1.5rem 3rem; }
         .form-label { font-size:0.9rem; margin-bottom:0.4rem; font-weight:600; }
         .form-control-sm { font-size:0.9rem; padding:0.5rem 0.75rem; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
         .btn { font-size:0.95rem; padding:0.5rem 1rem; }
@@ -309,58 +309,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     </div>
 
                     <div class="tight-mb">
-                        <label class="form-label">Message (WYSIWYG)</label>
+                        <label class="form-label">Message (WYSIWYG Editor)</label>
                         <textarea name="body" id="bodyEditor"><?= htmlspecialchars_decode($body_val) ?></textarea>
                         <div class="form-text mt-1 small">
                             Placeholders: [-email-] [-emailuser-] [-emaildomain-] [-time-] [-randommd5-]
                         </div>
                     </div>
 
-                    <!-- TinyMCE compact init -->
+                    <!-- TinyMCE – loads immediately -->
                     <script>
-                        let tinymceReady = false;
-
-                        function loadTinyMCE() {
-                            if (tinymceReady) return;
-                            tinymce.init({
-                                selector: '#bodyEditor',
-                                height: 260,
-                                menubar: false,
-                                statusbar: false,
-                                branding: false,
-                                plugins: 'advlist lists link image code',
-                                toolbar: 'undo redo | bold italic | bullist numlist | link image | code',
-                                toolbar_mode: 'sliding',
-                                toolbar_location: 'top',
-                                toolbar_sticky: true,
-                                content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#c9d1d9; background:#0d1117; margin:8px; }',
-                                skin: 'oxide-dark',
-                                content_css: 'dark',
-                                setup: (editor) => {
-                                    editor.on('init', () => {
-                                        editor.focus();
-                                        console.log('TinyMCE ready');
-                                    });
-                                }
-                            });
-                            tinymceReady = true;
-                        }
-
-                        document.getElementById('previewBtn').addEventListener('click', () => {
-                            loadTinyMCE();
-                            setTimeout(() => {
-                                const content = tinymce.get('bodyEditor')?.getContent() || document.getElementById('bodyEditor').value;
-                                const formData = new FormData(document.getElementById('mailerForm'));
-                                formData.set('action', 'preview');
-                                formData.set('body', content);
-                                fetch('', { method: 'POST', body: formData })
-                                    .then(r => r.text())
-                                    .then(html => {
-                                        document.querySelector('#previewModal .modal-content').innerHTML = html;
-                                        const modal = new bootstrap.Modal(document.getElementById('previewModal'));
-                                        modal.show();
-                                    });
-                            }, 600);
+                        tinymce.init({
+                            selector: '#bodyEditor',
+                            height: 300,
+                            menubar: false,
+                            statusbar: false,
+                            branding: false,
+                            plugins: 'advlist lists link image code',
+                            toolbar: 'undo redo | bold italic | bullist numlist | link image | code',
+                            toolbar_mode: 'sliding',
+                            toolbar_location: 'top',
+                            toolbar_sticky: true,
+                            content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#c9d1d9; background:#0d1117; margin:8px; }',
+                            skin: 'oxide-dark',
+                            content_css: 'dark',
+                            setup: (editor) => {
+                                editor.on('init', () => {
+                                    editor.focus(); // auto-focus so you can type/paste right away
+                                    console.log('TinyMCE loaded & focused');
+                                });
+                            }
                         });
                     </script>
 
@@ -374,7 +351,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <textarea name="emails" class="form-control form-control-sm" rows="6" required placeholder="email1@example.com&#10;email2@example.com"></textarea>
                     </div>
 
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-between">
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-between mt-4">
                         <button type="button" class="btn btn-outline-info btn-lg flex-fill" id="previewBtn">
                             <i class="bi bi-eye me-2"></i>Open Preview
                         </button>
@@ -401,5 +378,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const previewModalEl = document.getElementById('previewModal');
+        const previewBtn = document.getElementById('previewBtn');
+        let previewModal = null;
+
+        function updatePreview() {
+            const content = tinymce.get('bodyEditor')?.getContent() || document.getElementById('bodyEditor').value;
+            const formData = new FormData(document.getElementById('mailerForm'));
+            formData.set('action', 'preview');
+            formData.set('body', content);
+
+            fetch('', { method: 'POST', body: formData })
+                .then(r => r.text())
+                .then(html => {
+                    document.querySelector('#previewModal .modal-content').innerHTML = html;
+                })
+                .catch(e => console.error('Preview failed', e));
+        }
+
+        previewBtn.addEventListener('click', function () {
+            if (!previewModal) {
+                previewModal = new bootstrap.Modal(previewModalEl);
+            }
+            updatePreview();
+            previewModal.show();
+        });
+
+        previewModalEl.addEventListener('shown.bs.modal', updatePreview);
+    </script>
 </body>
 </html>
