@@ -1,6 +1,6 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE – Ultra-compact toolbar
+ * Full-Page Dark Bulk Mailer with TinyMCE – Previous Working Version
  * SMTP hidden | From Email username editable + domain fixed
  * Persists: From Name, Username, Reply-To, Subject, Message body
  */
@@ -339,7 +339,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             setup: (editor) => {
                                 editor.on('init', () => {
                                     editor.focus();
-                                    console.log('TinyMCE loaded – ultra-compact toolbar');
+                                    console.log('TinyMCE loaded – compact toolbar ready');
                                 });
                             }
                         });
@@ -366,7 +366,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 </form>
 
                 <div class="text-center mt-4 small text-muted">
-                    <strong>Created by 4RR0W H43D</strong> • Dark mode • TinyMCE ultra-compact
+                    <strong>Created by 4RR0W H43D</strong> • Dark mode • TinyMCE
                 </div>
             </div>
         </div>
