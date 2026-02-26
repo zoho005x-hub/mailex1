@@ -1,8 +1,9 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE (API key added)
+ * Full-Page Dark Bulk Mailer with TinyMCE (API key integrated)
  * SMTP hidden | From Email username editable + domain fixed
  * Persists: From Name, Username, Reply-To, Subject, Message body
+ * Fixed: undefined $preview_sample_email warning
  */
 
 session_start();
@@ -28,11 +29,13 @@ $smtp = [
 
 $default_sender_username = 'notification-docusign';
 
+$preview_sample_email = 'test.user@example.com';  // ← FIXED: defined here to prevent undefined variable warning
+
 $admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
 $max_attach_size = 10 * 1024 * 1024;
 
-// Restore saved data
+// Restore saved data after sending + Back
 $saved = $_SESSION['saved_form'] ?? [];
 $sender_name_val     = htmlspecialchars($saved['sender_name'] ?? $smtp['from_name']);
 $sender_username_val = htmlspecialchars($saved['sender_username'] ?? $default_sender_username);
@@ -41,7 +44,7 @@ $subject_val         = htmlspecialchars($saved['subject'] ?? '');
 $body_val            = $saved['body'] ?? '';
 unset($_SESSION['saved_form']);
 
-// Full sender email
+// Full sender email (editable username + fixed domain)
 $sender_email = $sender_username_val . '@' . $smtp_domain;
 
 // ────────────────────────────────────────────────
