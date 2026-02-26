@@ -1,14 +1,12 @@
 <?php
-/**
- * Modern Bulk Mailer – 2026 Dark Edition with TinyMCE
- * SMTP hidden, sender email editable, persistent fields, compact toolbar
- */
-
 session_start();
 
-// ────────────────────────────────────────────────
-// CONFIG – SMTP hidden
-// ────────────────────────────────────────────────
+// Force error display
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// CONFIG (SMTP hidden)
 $smtp = [
     'host'     => 'smtp.zeptomail.com',
     'port'     => 587,
@@ -20,20 +18,18 @@ $smtp = [
 
 $default_sender_email = 'postmail@treworgy-baldacci.cc';
 
-$admin_password = "B0TH"; // ← CHANGE THIS!
+$admin_password = "B0TH"; // CHANGE THIS!
 $delay_us = 150000;
 $max_attach_size = 10 * 1024 * 1024;
 
-// Restore saved data after sending
+// Restore saved fields
 $saved = $_SESSION['saved_form'] ?? [];
 $sender_name_val  = htmlspecialchars($saved['sender_name']  ?? $smtp['from_name']);
 $subject_val      = htmlspecialchars($saved['subject']      ?? '');
-$body_val         = $saved['body'] ?? ''; // raw HTML
+$body_val         = $saved['body'] ?? '';
 unset($_SESSION['saved_form']);
 
-// ────────────────────────────────────────────────
 // AUTH
-// ────────────────────────────────────────────────
 if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
     if (isset($_POST['pass']) && $_POST['pass'] === $admin_password) {
         $_SESSION['auth'] = true;
@@ -43,23 +39,21 @@ if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
     }
 }
 
-// PHPMailer requires
+// PHPMailer requires (make sure these paths are correct!)
 require 'PHPMailer/src/Exception.php';
 require 'PHPMailer/src/PHPMailer.php';
 require 'PHPMailer/src/SMTP.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// Disposable check function (unchanged)
+// Disposable check (unchanged)
 function isDisposable($email) {
     $domain = strtolower(substr(strrchr($email, "@"), 1));
     $list = ['mailinator.com','tempmail.com','10minutemail.com','guerrillamail.com','yopmail.com','trashmail.com','sharklasers.com','dispostable.com','temp-mail.org','throwawaymail.com','maildrop.cc','getairmail.com','fakeinbox.com','33mail.com','armyspy.com','cuvox.de','dayrep.com','einrot.com','fleckens.hu','gustr.com','jourrapide.com','rhyta.com','superrito.com','teleworm.us','webbox.us','mobimail.ga','temp-mail.io','moakt.com','mail.tm','tempmail.plus'];
     return in_array($domain, $list);
 }
 
-// ────────────────────────────────────────────────
 // PREVIEW HANDLER
-// ────────────────────────────────────────────────
 if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     $body_raw = $_POST['body'] ?? '';
     $body_preview = str_replace(
@@ -93,9 +87,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     <?php exit;
 }
 
-// ────────────────────────────────────────────────
 // SENDING LOGIC + SAVE FORM
-// ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
     $sender_email = trim($_POST['sender_email'] ?? $smtp['from_email']);
     $sender_name  = trim($_POST['sender_name'] ?? $smtp['from_name']);
@@ -104,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $body_raw     = $_POST['body'] ?? '';
     $to_list      = trim($_POST['emails'] ?? '');
 
-    // Save for restore
+    // Save for next load
     $_SESSION['saved_form'] = [
         'sender_name' => $sender_name,
         'subject'     => $subject_raw,
@@ -226,8 +218,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <title>4RR0W Mailer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <!-- TinyMCE CDN -->
-    <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
     <style>
         body { background:#0d1117; color:#c9d1d9; padding:1rem; font-size:0.9rem; }
         .card { max-width:540px; margin:auto; border:1px solid #30363d; border-radius:8px; background:#161b22; box-shadow:0 1px 8px rgba(0,0,0,0.4); }
@@ -237,7 +227,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .btn-sm { font-size:0.85rem; padding:0.4rem 0.9rem; }
         .form-text { font-size:0.75rem; color:#8b949e; }
         .tight-mb { margin-bottom:0.5rem !important; }
-        .tox-tinymce { border:1px solid #30363d !important; }
     </style>
 </head>
 <body>
@@ -273,12 +262,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     </div>
                 </div>
 
-                <!-- TinyMCE compact init -->
+                <!-- TinyMCE delayed init -->
+                <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
                 <script>
-                    let tinymceReady = false;
+                    let editorReady = false;
 
-                    function initTiny() {
-                        if (tinymceReady) return;
+                    function loadTinyMCE() {
+                        if (editorReady) return;
                         tinymce.init({
                             selector: '#bodyEditor',
                             height: 220,
@@ -288,24 +278,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             plugins: 'advlist lists link image code',
                             toolbar: 'undo redo | bold italic | bullist numlist | link image | code',
                             toolbar_mode: 'sliding',
-                            toolbar_location: 'top',
-                            toolbar_sticky: true,
                             content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#c9d1d9; background:#0d1117; margin:8px; }',
                             skin: 'oxide-dark',
                             content_css: 'dark',
                             setup: (editor) => {
                                 editor.on('init', () => {
                                     editor.focus();
-                                    editor.getContainer().style.border = '1px solid #30363d';
-                                    editor.getContainer().style.borderRadius = '6px';
+                                    console.log('TinyMCE initialized – ready to type/paste');
                                 });
                             }
                         });
-                        tinymceReady = true;
+                        editorReady = true;
                     }
 
+                    // Load TinyMCE only on preview click
                     document.getElementById('previewBtn').addEventListener('click', () => {
-                        initTiny();
+                        loadTinyMCE();
                         setTimeout(() => {
                             const content = tinymce.get('bodyEditor')?.getContent() || document.getElementById('bodyEditor').value;
                             const formData = new FormData(document.getElementById('mailerForm'));
@@ -317,8 +305,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                     document.querySelector('#previewModal .modal-content').innerHTML = html;
                                     const modal = new bootstrap.Modal(document.getElementById('previewModal'));
                                     modal.show();
-                                });
-                        }, 400);
+                                })
+                                .catch(e => console.error('Preview failed', e));
+                        }, 600); // increased delay for init
                     });
                 </script>
 
@@ -352,7 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <div class="modal fade" id="previewModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <!-- Filled by JS -->
+                <!-- Filled dynamically -->
             </div>
         </div>
     </div>
