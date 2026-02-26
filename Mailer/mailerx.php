@@ -1,8 +1,8 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with CKEditor 5 – 2026 Edition
- * SMTP hidden, From Email username editable + domain fixed
- * Persists: From Name, From Email username, Reply-To, Subject, Message body
+ * Full-Page Dark Bulk Mailer with CKEditor 5 + Plugins – 2026 Edition
+ * SMTP hidden | From Email username editable + domain fixed
+ * Persists: From Name, Username, Reply-To, Subject, Message body
  */
 
 session_start();
@@ -258,7 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     
-    <!-- CKEditor 5 CDN (classic editor) -->
+    <!-- CKEditor 5 CDN – Classic editor with plugins -->
     <script src="https://cdn.ckeditor.com/ckeditor5/43.0.0/classic/ckeditor.js"></script>
 
     <style>
@@ -273,7 +273,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .form-text { font-size:0.8rem; color:#8b949e; }
         .tight-mb { margin-bottom:0.75rem !important; }
         .input-group-text { background:#21262d; color:#c9d1d9; border:1px solid #30363d; font-size:0.9rem; }
-        .ck-editor__editable { 
+        .ck-editor__editable_inline { 
             min-height: 260px !important; 
             background: #0d1117 !important; 
             color: #c9d1d9 !important; 
@@ -321,37 +321,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     </div>
 
                     <div class="tight-mb">
-                        <label class="form-label">Message (WYSIWYG Editor)</label>
+                        <label class="form-label">Message (CKEditor 5)</label>
                         <textarea name="body" id="bodyEditor"><?= htmlspecialchars($body_val) ?></textarea>
                         <div class="form-text mt-1 small">
                             Placeholders: [-email-] [-emailuser-] [-emaildomain-] [-time-] [-randommd5-]
                         </div>
                     </div>
 
-                    <!-- CKEditor 5 initialization -->
+                    <!-- CKEditor 5 – immediate load with plugins -->
                     <script>
                         ClassicEditor
                             .create(document.querySelector('#bodyEditor'), {
                                 toolbar: [
                                     'undo', 'redo', '|',
-                                    'bold', 'italic', '|',
+                                    'heading', '|',
+                                    'bold', 'italic', 'underline', 'strikethrough', '|',
                                     'bulletedList', 'numberedList', '|',
-                                    'link', 'imageUpload', '|',
-                                    'sourceEditing'
+                                    'alignment', '|',
+                                    'link', 'imageUpload', 'blockQuote', 'insertTable', '|',
+                                    'code', 'codeBlock', 'sourceEditing'
                                 ],
                                 placeholder: 'Start typing your message here...',
-                                height: 300,
+                                height: 320,
                                 uiColor: '#0d1117',
-                                ckfinder: false,
-                                mediaEmbed: { previewsInData: true },
+                                // Optional: enable image upload via URL or drag-drop (no server needed for basic use)
+                                simpleUpload: {
+                                    // If you want real image upload later, set uploadUrl to your server endpoint
+                                    uploadUrl: 'https://example.com/upload' // placeholder – replace if needed
+                                }
                             })
                             .then(editor => {
-                                console.log('CKEditor 5 loaded');
+                                console.log('CKEditor 5 loaded with plugins');
                                 editor.focus(); // auto-focus on load
-                                window.ckEditorInstance = editor; // for preview access
+                                window.ckEditorInstance = editor; // store for preview
                             })
                             .catch(error => {
-                                console.error('CKEditor error:', error);
+                                console.error('CKEditor failed to load:', error);
+                                // Fallback: keep plain textarea if CKEditor fails
                             });
                     </script>
 
@@ -376,7 +382,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 </form>
 
                 <div class="text-center mt-4 small text-muted">
-                    <strong>Created by 4RR0W H43D</strong> • Dark mode • CKEditor 5
+                    <strong>Created by 4RR0W H43D</strong> • Dark mode • CKEditor 5 with plugins
                 </div>
             </div>
         </div>
@@ -398,7 +404,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         let previewModal = null;
 
         function updatePreview() {
-            // Get content from CKEditor if initialized, else fallback to textarea
             let content = document.getElementById('bodyEditor').value;
             if (window.ckEditorInstance) {
                 content = window.ckEditorInstance.getData();
