@@ -1,8 +1,8 @@
 <?php
 /**
  * Modern Bulk Mailer – 2026 Dark Edition
- * Persistent fields after send + Back
- * SMTP hidden, sender email editable
+ * From Email: username editable, domain fixed/hidden
+ * Persistent fields + TinyMCE + SMTP hidden
  */
 
 session_start();
@@ -13,8 +13,10 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 // ────────────────────────────────────────────────
-// CONFIG – SMTP hidden
+// CONFIG – SMTP hidden, domain fixed
 // ────────────────────────────────────────────────
+$smtp_domain = 'treworgy-baldacci.cc'; // fixed domain – not editable
+
 $smtp = [
     'host'     => 'smtp.zeptomail.com',
     'port'     => 587,
@@ -24,7 +26,7 @@ $smtp = [
     'from_name'=> 'Your App Name',
 ];
 
-$default_sender_email = 'postmail@treworgy-baldacci.cc';
+$default_sender_username = 'postmail'; // default username part
 
 $admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
@@ -35,7 +37,11 @@ $saved = $_SESSION['saved_form'] ?? [];
 $sender_name_val  = htmlspecialchars($saved['sender_name']  ?? $smtp['from_name']);
 $subject_val      = htmlspecialchars($saved['subject']      ?? '');
 $body_val         = $saved['body'] ?? '';
+$saved_username   = $saved['sender_username'] ?? $default_sender_username;
 unset($_SESSION['saved_form']);
+
+// Full sender email (username + fixed domain)
+$sender_email = $saved_username . '@' . $smtp_domain;
 
 // ────────────────────────────────────────────────
 // AUTH
@@ -49,7 +55,7 @@ if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
     }
 }
 
-// PHPMailer
+// PHPMailer requires
 require 'PHPMailer/src/Exception.php';
 require 'PHPMailer/src/PHPMailer.php';
 require 'PHPMailer/src/SMTP.php';
@@ -63,7 +69,7 @@ function isDisposable($email) {
     return in_array($domain, $list);
 }
 
-// PREVIEW HANDLER (display only – no edit)
+// PREVIEW HANDLER
 if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     $body_raw = $_POST['body'] ?? '';
     $body_preview = str_replace(
@@ -99,18 +105,20 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
 
 // SENDING LOGIC + SAVE FORM DATA
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
-    $sender_email = trim($_POST['sender_email'] ?? $smtp['from_email']);
+    $sender_username = trim($_POST['sender_username'] ?? $default_sender_username);
+    $sender_email = $sender_username . '@' . $smtp_domain; // build full email
     $sender_name  = trim($_POST['sender_name'] ?? $smtp['from_name']);
     $reply_to     = trim($_POST['reply_to'] ?? '');
     $subject_raw  = trim($_POST['subject'] ?? '');
     $body_raw     = $_POST['body'] ?? '';
     $to_list      = trim($_POST['emails'] ?? '');
 
-    // Save for restore after Back
+    // Save for restore
     $_SESSION['saved_form'] = [
-        'sender_name' => $sender_name,
-        'subject'     => $subject_raw,
-        'body'        => $body_raw,
+        'sender_name'   => $sender_name,
+        'subject'       => $subject_raw,
+        'body'          => $body_raw,
+        'sender_username' => $sender_username,
     ];
 
     $emails = array_filter(array_map('trim', explode("\n", $to_list)));
@@ -237,6 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .btn-sm { font-size:0.85rem; padding:0.4rem 0.9rem; }
         .form-text { font-size:0.75rem; color:#8b949e; }
         .tight-mb { margin-bottom:0.5rem !important; }
+        .input-group-text { background:#21262d; color:#c9d1d9; border:1px solid #30363d; }
     </style>
 </head>
 <body>
@@ -255,8 +264,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 </div>
 
                 <div class="tight-mb">
-                    <label class="form-label">From Email</label>
-                    <input type="email" name="sender_email" class="form-control form-control-sm" value="<?= htmlspecialchars($smtp['from_email']) ?>" required>
+                    <label class="form-label">From Email Username</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" name="sender_username" class="form-control form-control-sm" value="<?= htmlspecialchars($saved_username ?? explode('@', $default_sender_email)[0]) ?>" required>
+                        <span class="input-group-text">@<?= htmlspecialchars($smtp_domain) ?></span>
+                    </div>
+                    <div class="form-text text-danger small">Username editable • Domain fixed & verified in ZeptoMail</div>
                 </div>
 
                 <div class="tight-mb">
@@ -297,7 +310,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         </div>
     </div>
 
-    <!-- Preview Modal (display only) -->
+    <!-- Preview Modal -->
     <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-xl">
             <div class="modal-content bg-dark text-light border-secondary">
