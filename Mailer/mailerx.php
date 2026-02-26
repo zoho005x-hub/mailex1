@@ -1,8 +1,8 @@
 <?php
 /**
  * Modern Bulk Mailer – 2026 Dark Edition
- * From Email: username editable, domain fixed/hidden
- * Persistent fields + TinyMCE + SMTP hidden
+ * SMTP hidden, From Email username editable + domain fixed
+ * Persists: From Name, From Email username, Reply-To, Subject, Message body
  */
 
 session_start();
@@ -15,7 +15,7 @@ error_reporting(E_ALL);
 // ────────────────────────────────────────────────
 // CONFIG – SMTP hidden, domain fixed
 // ────────────────────────────────────────────────
-$smtp_domain = 'treworgy-baldacci.cc'; // fixed domain – not editable
+$smtp_domain = 'treworgy-baldacci.cc'; // fixed – not editable
 
 $smtp = [
     'host'     => 'smtp.zeptomail.com',
@@ -26,22 +26,23 @@ $smtp = [
     'from_name'=> 'Your App Name',
 ];
 
-$default_sender_username = 'postmail'; // default username part
+$default_sender_username = 'postmail';
 
 $admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
 $max_attach_size = 10 * 1024 * 1024;
 
-// Restore saved data after sending
+// Restore saved data after sending + Back
 $saved = $_SESSION['saved_form'] ?? [];
-$sender_name_val  = htmlspecialchars($saved['sender_name']  ?? $smtp['from_name']);
-$subject_val      = htmlspecialchars($saved['subject']      ?? '');
-$body_val         = $saved['body'] ?? '';
-$saved_username   = $saved['sender_username'] ?? $default_sender_username;
+$sender_name_val     = htmlspecialchars($saved['sender_name'] ?? $smtp['from_name']);
+$sender_username_val = htmlspecialchars($saved['sender_username'] ?? $default_sender_username);
+$reply_to_val        = htmlspecialchars($saved['reply_to'] ?? '');
+$subject_val         = htmlspecialchars($saved['subject'] ?? '');
+$body_val            = $saved['body'] ?? ''; // raw HTML
 unset($_SESSION['saved_form']);
 
-// Full sender email (username + fixed domain)
-$sender_email = $saved_username . '@' . $smtp_domain;
+// Full sender email (built from editable username + fixed domain)
+$sender_email = $sender_username_val . '@' . $smtp_domain;
 
 // ────────────────────────────────────────────────
 // AUTH
@@ -50,12 +51,31 @@ if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
     if (isset($_POST['pass']) && $_POST['pass'] === $admin_password) {
         $_SESSION['auth'] = true;
     } else {
-        echo '<!DOCTYPE html><html lang="en" data-bs-theme="dark"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Login</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><style>body{background:#0d1117;display:flex;align-items:center;justify-content:center;min-height:100vh;}.card{max-width:380px;}</style></head><body><div class="card bg-dark border-secondary shadow-lg p-4"><h4 class="text-center mb-4">Password</h4><form method="post"><input type="password" name="pass" class="form-control mb-3" autofocus required><button type="submit" class="btn btn-primary w-100">Enter</button></form></div></body></html>';
-        exit;
+        ?>
+        <!DOCTYPE html>
+        <html lang="en" data-bs-theme="dark">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Login</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+            <style>body{background:#0d1117;display:flex;align-items:center;justify-content:center;min-height:100vh;}.card{max-width:380px;}</style>
+        </head>
+        <body>
+            <div class="card bg-dark border-secondary shadow-lg p-4">
+                <h4 class="text-center mb-4">Password</h4>
+                <form method="post">
+                    <input type="password" name="pass" class="form-control mb-3" autofocus required>
+                    <button type="submit" class="btn btn-primary w-100">Enter</button>
+                </form>
+            </div>
+        </body>
+        </html>
+        <?php exit;
     }
 }
 
-// PHPMailer requires
+// PHPMailer
 require 'PHPMailer/src/Exception.php';
 require 'PHPMailer/src/PHPMailer.php';
 require 'PHPMailer/src/SMTP.php';
@@ -103,22 +123,23 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     <?php exit;
 }
 
-// SENDING LOGIC + SAVE FORM DATA
+// SENDING LOGIC + SAVE MORE FIELDS
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
-    $sender_username = trim($_POST['sender_username'] ?? $default_sender_username);
-    $sender_email = $sender_username . '@' . $smtp_domain; // build full email
+    $sender_username = trim($_POST['sender_username'] ?? explode('@', $default_sender_email)[0]);
+    $sender_email = $sender_username . '@' . $smtp_domain;
     $sender_name  = trim($_POST['sender_name'] ?? $smtp['from_name']);
     $reply_to     = trim($_POST['reply_to'] ?? '');
     $subject_raw  = trim($_POST['subject'] ?? '');
     $body_raw     = $_POST['body'] ?? '';
     $to_list      = trim($_POST['emails'] ?? '');
 
-    // Save for restore
+    // Save ALL requested fields for restore after Back
     $_SESSION['saved_form'] = [
-        'sender_name'   => $sender_name,
-        'subject'       => $subject_raw,
-        'body'          => $body_raw,
+        'sender_name'     => $sender_name,
         'sender_username' => $sender_username,
+        'reply_to'        => $reply_to,
+        'subject'         => $subject_raw,
+        'body'            => $body_raw,
     ];
 
     $emails = array_filter(array_map('trim', explode("\n", $to_list)));
@@ -245,7 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .btn-sm { font-size:0.85rem; padding:0.4rem 0.9rem; }
         .form-text { font-size:0.75rem; color:#8b949e; }
         .tight-mb { margin-bottom:0.5rem !important; }
-        .input-group-text { background:#21262d; color:#c9d1d9; border:1px solid #30363d; }
+        .input-group-text { background:#21262d; color:#c9d1d9; border:1px solid #30363d; font-size:0.85rem; }
     </style>
 </head>
 <body>
@@ -266,10 +287,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <div class="tight-mb">
                     <label class="form-label">From Email Username</label>
                     <div class="input-group input-group-sm">
-                        <input type="text" name="sender_username" class="form-control form-control-sm" value="<?= htmlspecialchars($saved_username ?? explode('@', $default_sender_email)[0]) ?>" required>
+                        <input type="text" name="sender_username" class="form-control form-control-sm" value="<?= htmlspecialchars($saved_username ?? explode('@', $default_sender_email)[0]) ?>" required placeholder="username">
                         <span class="input-group-text">@<?= htmlspecialchars($smtp_domain) ?></span>
                     </div>
-                    <div class="form-text text-danger small">Username editable • Domain fixed & verified by Admin</div>
+                    <div class="form-text text-danger small">Username editable • Domain fixed & verified in ZeptoMail</div>
+                </div>
+
+                <div class="tight-mb">
+                    <label class="form-label">Reply-To (optional)</label>
+                    <input type="email" name="reply_to" class="form-control form-control-sm" value="<?= $reply_to_val ?>" placeholder="replies@domain.com">
                 </div>
 
                 <div class="tight-mb">
