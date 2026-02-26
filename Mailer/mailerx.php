@@ -1,9 +1,7 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE (API key integrated)
- * SMTP hidden | From Email username editable + domain fixed
- * Persists: From Name, Username, Reply-To, Subject, Message body
- * Fixed: undefined $preview_sample_email warning
+ * Full-Page Dark Bulk Mailer with TinyMCE – Fields Persisted After Send
+ * From Name, Username, Reply-To, Subject, Message body all restored
  */
 
 session_start();
@@ -14,7 +12,7 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 // ────────────────────────────────────────────────
-// CONFIG – SMTP hidden, domain fixed
+// CONFIG
 // ────────────────────────────────────────────────
 $smtp_domain = 'treworgy-baldacci.cc';
 
@@ -29,22 +27,22 @@ $smtp = [
 
 $default_sender_username = 'notification-docusign';
 
-$preview_sample_email = 'test.user@example.com';  // ← FIXED: defined here to prevent undefined variable warning
+$preview_sample_email = 'test.user@example.com';  // for preview only
 
 $admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
 $max_attach_size = 10 * 1024 * 1024;
 
-// Restore saved data after sending + Back
+// Restore previously saved values (after "Back")
 $saved = $_SESSION['saved_form'] ?? [];
-$sender_name_val     = htmlspecialchars($saved['sender_name'] ?? $smtp['from_name']);
+$sender_name_val     = htmlspecialchars($saved['sender_name']     ?? $smtp['from_name']);
 $sender_username_val = htmlspecialchars($saved['sender_username'] ?? $default_sender_username);
-$reply_to_val        = htmlspecialchars($saved['reply_to'] ?? '');
-$subject_val         = htmlspecialchars($saved['subject'] ?? '');
-$body_val            = $saved['body'] ?? '';
-unset($_SESSION['saved_form']);
+$reply_to_val        = htmlspecialchars($saved['reply_to']        ?? '');
+$subject_val         = htmlspecialchars($saved['subject']         ?? '');
+$body_val            = $saved['body'] ?? '';  // raw HTML from TinyMCE
+unset($_SESSION['saved_form']); // clear after restore
 
-// Full sender email (editable username + fixed domain)
+// Full sender email (username + fixed domain)
 $sender_email = $sender_username_val . '@' . $smtp_domain;
 
 // ────────────────────────────────────────────────
@@ -136,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $body_raw     = $_POST['body'] ?? '';
     $to_list      = trim($_POST['emails'] ?? '');
 
-    // Save all fields
+    // Save all important fields so they restore after "Back"
     $_SESSION['saved_form'] = [
         'sender_name'     => $sender_name,
         'sender_username' => $sender_username,
@@ -323,7 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         </div>
                     </div>
 
-                    <!-- TinyMCE with your API key – loads immediately -->
+                    <!-- TinyMCE with your API key – immediate load -->
                     <script>
                         tinymce.init({
                             selector: '#bodyEditor',
@@ -342,8 +340,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             content_css: 'dark',
                             setup: (editor) => {
                                 editor.on('init', () => {
-                                    editor.focus(); // auto-focus so typing/pasting works immediately
-                                    console.log('TinyMCE initialized with your API key');
+                                    editor.focus();
+                                    console.log('TinyMCE ready');
                                 });
                             }
                         });
@@ -370,7 +368,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 </form>
 
                 <div class="text-center mt-4 small text-muted">
-                    <strong>Created by 4RR0W H43D</strong> • Dark mode • TinyMCE (API key added)
+                    <strong>Created by 4RR0W H43D</strong> • Dark mode • TinyMCE
                 </div>
             </div>
         </div>
