@@ -269,7 +269,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <input type="text" name="sender_username" class="form-control form-control-sm" value="<?= htmlspecialchars($saved_username ?? explode('@', $default_sender_email)[0]) ?>" required>
                         <span class="input-group-text">@<?= htmlspecialchars($smtp_domain) ?></span>
                     </div>
-                    <div class="form-text text-danger small">Username editable • Domain fixed & verified in ZeptoMail</div>
+                    <div class="form-text text-danger small">Username editable • Domain fixed & verified by Admin</div>
                 </div>
 
                 <div class="tight-mb">
