@@ -1,13 +1,13 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE – Preview Modal Fixed
- * SMTP hidden | From Email username editable + domain fixed
+ * Full-Page Dark Bulk Mailer with TinyMCE & Email Validation
+ * Validates: From Username, Reply-To, Recipients
  * Persists: From Name, Username, Reply-To, Subject, Message body
  */
 
 session_start();
 
-// Force error display for debugging (remove in production)
+// Force error display for debugging
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -28,7 +28,7 @@ $smtp = [
 
 $default_sender_username = 'notification-docusign';
 
-$preview_sample_email = 'test.user@example.com';  // for preview only
+$preview_sample_email = 'test.user@example.com';
 
 $admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
@@ -91,6 +91,18 @@ function isDisposable($email) {
     return in_array($domain, $list);
 }
 
+// ────────────────────────────────────────────────
+// VALIDATION FUNCTIONS
+// ────────────────────────────────────────────────
+function isValidEmailUsername($username) {
+    // Basic RFC 5322 local-part validation (simplified)
+    return preg_match('/^[a-zA-Z0-9.!#$%&\'*+\/=?^_`{|}~-]{1,64}$/', $username);
+}
+
+function isValidEmail($email) {
+    return filter_var($email, FILTER_VALIDATE_EMAIL) !== false && !isDisposable($email);
+}
+
 // PREVIEW HANDLER
 if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     $body_raw = $_POST['body'] ?? '';
@@ -125,17 +137,52 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     <?php exit;
 }
 
-// SENDING LOGIC + SAVE FORM DATA
+// SENDING LOGIC + VALIDATION + SAVE FORM DATA
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
     $sender_username = trim($_POST['sender_username'] ?? $default_sender_username);
-    $sender_email = $sender_username . '@' . $smtp_domain;
     $sender_name  = trim($_POST['sender_name'] ?? $smtp['from_name']);
     $reply_to     = trim($_POST['reply_to'] ?? '');
     $subject_raw  = trim($_POST['subject'] ?? '');
     $body_raw     = $_POST['body'] ?? '';
     $to_list      = trim($_POST['emails'] ?? '');
 
-    // Save all fields for restore after "Back"
+    // ─── SERVER-SIDE VALIDATION ───
+    $errors = [];
+
+    // From Email Username
+    if (!isValidEmailUsername($sender_username)) {
+        $errors[] = "Invalid From Email Username. Use 1–64 chars (letters, digits, dots, hyphens, underscores allowed).";
+    }
+
+    // Reply-To (if provided)
+    if ($reply_to !== '' && !isValidEmail($reply_to)) {
+        $errors[] = "Invalid Reply-To email address.";
+    }
+
+    // Recipients
+    $emails = array_filter(array_map('trim', explode("\n", $to_list)));
+    if (empty($emails)) {
+        $errors[] = "At least one recipient email is required.";
+    } else {
+        foreach ($emails as $email) {
+            if (!isValidEmail($email)) {
+                $errors[] = "Invalid recipient email: " . htmlspecialchars($email);
+                break; // stop on first invalid
+            }
+        }
+    }
+
+    // If errors → show them instead of sending
+    if (!empty($errors)) {
+        echo '<!DOCTYPE html><html lang="en" data-bs-theme="dark"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Error</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-dark text-light p-5"><div class="container"><div class="alert alert-danger"><h4>Validation Errors</h4><ul>';
+        foreach ($errors as $err) {
+            echo '<li>' . $err . '</li>';
+        }
+        echo '</ul><a href="?" class="btn btn-outline-light mt-3">Back to Form</a></div></div></body></html>';
+        exit;
+    }
+
+    // ─── Save for restore after Back ───
     $_SESSION['saved_form'] = [
         'sender_name'     => $sender_name,
         'sender_username' => $sender_username,
@@ -144,7 +191,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         'body'            => $body_raw,
     ];
 
-    $emails = array_filter(array_map('trim', explode("\n", $to_list)));
+    $sender_email = $sender_username . '@' . $smtp_domain;
 
     $attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
@@ -185,10 +232,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $success = 0;
     foreach ($emails as $email) {
         $count++;
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            echo "[$count] $email → <span class='fail'>invalid format</span>\n";
-            continue;
-        }
         $domain = substr(strrchr($email, "@"), 1);
         if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
             echo "[$count] $email → <span class='fail'>no MX/A records</span>\n";
@@ -278,6 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .tox-tinymce { border:1px solid #30363d !important; background:#0d1117 !important; }
         .tox-toolbar { background:#161b22 !important; border-bottom:1px solid #30363d !important; min-height:32px !important; padding:2px 4px !important; }
         .tox-tbtn { min-width:26px !important; padding:2px !important; margin:0 1px !important; }
+        .error-message { color:#f85149; font-size:0.85rem; margin-top:0.25rem; }
     </style>
 </head>
 <body>
@@ -287,7 +331,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <i class="bi bi-envelope-at me-1"></i>4RR0W H43D Bulk Mailer
             </div>
             <div class="card-body p-3">
-                <form method="post" enctype="multipart/form-data" id="mailerForm">
+                <form method="post" enctype="multipart/form-data" id="mailerForm" onsubmit="return validateForm()">
                     <input type="hidden" name="action" value="send">
 
                     <div class="tight-mb">
@@ -298,15 +342,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     <div class="tight-mb">
                         <label class="form-label">From Email Username</label>
                         <div class="input-group input-group-sm">
-                            <input type="text" name="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
+                            <input type="text" name="sender_username" id="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
                             <span class="input-group-text">@<?= htmlspecialchars($smtp_domain) ?></span>
                         </div>
                         <div class="form-text text-danger small">Username editable • Domain fixed & verified in ZeptoMail</div>
+                        <div id="usernameError" class="error-message"></div>
                     </div>
 
                     <div class="tight-mb">
                         <label class="form-label">Reply-To (optional)</label>
-                        <input type="email" name="reply_to" class="form-control form-control-sm" value="<?= $reply_to_val ?>" placeholder="replies@domain.com">
+                        <input type="email" name="reply_to" id="reply_to" class="form-control form-control-sm" value="<?= $reply_to_val ?>" placeholder="replies@domain.com">
+                        <div id="replyToError" class="error-message"></div>
                     </div>
 
                     <div class="tight-mb">
@@ -322,7 +368,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         </div>
                     </div>
 
-                    <!-- TinyMCE with your API key – loads immediately -->
+                    <!-- TinyMCE with your API key -->
                     <script>
                         tinymce.init({
                             selector: '#bodyEditor',
@@ -355,7 +401,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                     <div class="tight-mb">
                         <label class="form-label">Recipients (one per line)</label>
-                        <textarea name="emails" class="form-control form-control-sm" rows="6" required placeholder="email1@example.com&#10;email2@example.com"></textarea>
+                        <textarea name="emails" id="emails" class="form-control form-control-sm" rows="6" required placeholder="email1@example.com&#10;email2@example.com"></textarea>
+                        <div id="recipientsError" class="error-message"></div>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-between mt-4">
@@ -378,7 +425,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <!-- Preview Modal -->
     <div class="modal fade" id="previewModal" tabindex="-1">
         <div class="modal-dialog modal-xl">
-            <div class="modal-content bg-dark text-light border-secondary">
+            <div class="modal-content">
                 <!-- Filled dynamically -->
             </div>
         </div>
@@ -386,6 +433,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Client-side validation
+        function validateForm() {
+            let valid = true;
+            const errors = {};
+
+            // From Email Username
+            const username = document.getElementById('sender_username').value.trim();
+            const usernameRegex = /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]{1,64}$/;
+            if (!usernameRegex.test(username)) {
+                document.getElementById('usernameError').textContent = 'Invalid username (1–64 chars, letters/digits/dots/hyphens/underscores allowed)';
+                valid = false;
+            } else {
+                document.getElementById('usernameError').textContent = '';
+            }
+
+            // Reply-To
+            const replyTo = document.getElementById('reply_to').value.trim();
+            if (replyTo !== '') {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(replyTo)) {
+                    document.getElementById('replyToError').textContent = 'Invalid email format';
+                    valid = false;
+                } else {
+                    document.getElementById('replyToError').textContent = '';
+                }
+            }
+
+            // Recipients
+            const recipientsText = document.getElementById('emails').value.trim();
+            if (!recipientsText) {
+                document.getElementById('recipientsError').textContent = 'At least one recipient required';
+                valid = false;
+            } else {
+                const lines = recipientsText.split('\n').map(l => l.trim()).filter(l => l);
+                if (lines.length === 0) {
+                    document.getElementById('recipientsError').textContent = 'At least one recipient required';
+                    valid = false;
+                } else {
+                    let invalidFound = false;
+                    for (let line of lines) {
+                        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(line)) {
+                            invalidFound = true;
+                            break;
+                        }
+                    }
+                    if (invalidFound) {
+                        document.getElementById('recipientsError').textContent = 'One or more recipient emails are invalid';
+                        valid = false;
+                    } else {
+                        document.getElementById('recipientsError').textContent = '';
+                    }
+                }
+            }
+
+            return valid;
+        }
+
+        // Preview logic (fixed – no loop, reliable close)
         const previewModalEl = document.getElementById('previewModal');
         const previewBtn = document.getElementById('previewBtn');
         let previewModal = null;
@@ -399,37 +504,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             fetch('', { method: 'POST', body: formData })
                 .then(r => r.text())
                 .then(html => {
-                    // Update only the modal content, not the whole structure
                     document.querySelector('#previewModal .modal-content').innerHTML = html;
-
-                    // Re-attach close button listener (in case content overwrite breaks it)
                     const closeBtn = document.querySelector('#previewModal .btn-close');
                     if (closeBtn) {
-                        closeBtn.onclick = function() {
+                        closeBtn.onclick = () => {
                             if (previewModal) previewModal.hide();
                         };
                     }
                 })
-                .catch(e => console.error('Preview failed:', e));
+                .catch(e => console.error('Preview failed', e));
         }
 
         previewBtn.addEventListener('click', function () {
             if (!previewModal) {
                 previewModal = new bootstrap.Modal(previewModalEl, {
-                    backdrop: true,    // allow closing by clicking outside
-                    keyboard: true     // allow Esc key to close
+                    backdrop: true,
+                    keyboard: true
                 });
             }
-
-            // Load preview once when opening
             updatePreview();
-
             previewModal.show();
-        });
-
-        // Ensure close works even after content update
-        previewModalEl.addEventListener('hidden.bs.modal', function () {
-            // Optional: clean up if needed
         });
     </script>
 </body>
