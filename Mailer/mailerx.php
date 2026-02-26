@@ -1,6 +1,6 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE – Immediate Load
+ * Full-Page Dark Bulk Mailer with CKEditor 5 – 2026 Edition
  * SMTP hidden, From Email username editable + domain fixed
  * Persists: From Name, From Email username, Reply-To, Subject, Message body
  */
@@ -257,8 +257,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <title>4RR0W H43D Bulk Mailer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <!-- TinyMCE CDN -->
-    <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+    
+    <!-- CKEditor 5 CDN (classic editor) -->
+    <script src="https://cdn.ckeditor.com/ckeditor5/43.0.0/classic/ckeditor.js"></script>
+
     <style>
         body { background:#0d1117; color:#c9d1d9; padding:1rem; margin:0; font-size:0.95rem; }
         .container { max-width:100%; padding:0; }
@@ -271,7 +273,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .form-text { font-size:0.8rem; color:#8b949e; }
         .tight-mb { margin-bottom:0.75rem !important; }
         .input-group-text { background:#21262d; color:#c9d1d9; border:1px solid #30363d; font-size:0.9rem; }
-        .tox-tinymce { border:1px solid #30363d !important; background:#0d1117 !important; }
+        .ck-editor__editable { 
+            min-height: 260px !important; 
+            background: #0d1117 !important; 
+            color: #c9d1d9 !important; 
+            border: 1px solid #30363d !important; 
+            border-radius: 6px !important; 
+        }
+        .ck.ck-editor__top.ck-reset_all { background: #161b22 !important; border-bottom: 1px solid #30363d !important; }
+        .ck.ck-toolbar { background: #161b22 !important; }
+        .ck.ck-button { color: #c9d1d9 !important; }
+        .ck.ck-button.ck-on { background: #1f6feb !important; color: white !important; }
     </style>
 </head>
 <body>
@@ -310,35 +322,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                     <div class="tight-mb">
                         <label class="form-label">Message (WYSIWYG Editor)</label>
-                        <textarea name="body" id="bodyEditor"><?= htmlspecialchars_decode($body_val) ?></textarea>
+                        <textarea name="body" id="bodyEditor"><?= htmlspecialchars($body_val) ?></textarea>
                         <div class="form-text mt-1 small">
                             Placeholders: [-email-] [-emailuser-] [-emaildomain-] [-time-] [-randommd5-]
                         </div>
                     </div>
 
-                    <!-- TinyMCE – loads immediately -->
+                    <!-- CKEditor 5 initialization -->
                     <script>
-                        tinymce.init({
-                            selector: '#bodyEditor',
-                            height: 300,
-                            menubar: false,
-                            statusbar: false,
-                            branding: false,
-                            plugins: 'advlist lists link image code',
-                            toolbar: 'undo redo | bold italic | bullist numlist | link image | code',
-                            toolbar_mode: 'sliding',
-                            toolbar_location: 'top',
-                            toolbar_sticky: true,
-                            content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#c9d1d9; background:#0d1117; margin:8px; }',
-                            skin: 'oxide-dark',
-                            content_css: 'dark',
-                            setup: (editor) => {
-                                editor.on('init', () => {
-                                    editor.focus(); // auto-focus so you can type/paste right away
-                                    console.log('TinyMCE loaded & focused');
-                                });
-                            }
-                        });
+                        ClassicEditor
+                            .create(document.querySelector('#bodyEditor'), {
+                                toolbar: [
+                                    'undo', 'redo', '|',
+                                    'bold', 'italic', '|',
+                                    'bulletedList', 'numberedList', '|',
+                                    'link', 'imageUpload', '|',
+                                    'sourceEditing'
+                                ],
+                                placeholder: 'Start typing your message here...',
+                                height: 300,
+                                uiColor: '#0d1117',
+                                ckfinder: false,
+                                mediaEmbed: { previewsInData: true },
+                            })
+                            .then(editor => {
+                                console.log('CKEditor 5 loaded');
+                                editor.focus(); // auto-focus on load
+                                window.ckEditorInstance = editor; // for preview access
+                            })
+                            .catch(error => {
+                                console.error('CKEditor error:', error);
+                            });
                     </script>
 
                     <div class="tight-mb">
@@ -362,7 +376,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 </form>
 
                 <div class="text-center mt-4 small text-muted">
-                    <strong>Created by 4RR0W H43D</strong> • Dark mode • Full page layout
+                    <strong>Created by 4RR0W H43D</strong> • Dark mode • CKEditor 5
                 </div>
             </div>
         </div>
@@ -384,7 +398,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         let previewModal = null;
 
         function updatePreview() {
-            const content = tinymce.get('bodyEditor')?.getContent() || document.getElementById('bodyEditor').value;
+            // Get content from CKEditor if initialized, else fallback to textarea
+            let content = document.getElementById('bodyEditor').value;
+            if (window.ckEditorInstance) {
+                content = window.ckEditorInstance.getData();
+            }
+
             const formData = new FormData(document.getElementById('mailerForm'));
             formData.set('action', 'preview');
             formData.set('body', content);
@@ -393,6 +412,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 .then(r => r.text())
                 .then(html => {
                     document.querySelector('#previewModal .modal-content').innerHTML = html;
+                    const modal = new bootstrap.Modal(previewModalEl);
+                    modal.show();
                 })
                 .catch(e => console.error('Preview failed', e));
         }
