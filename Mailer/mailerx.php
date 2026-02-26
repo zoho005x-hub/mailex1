@@ -13,7 +13,7 @@
                 <input type="text" name="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
                 <span class="input-group-text">@<?= htmlspecialchars($smtp_domain) ?></span>
             </div>
-            <div class="form-text text-danger small">Username editable • Domain fixed & verified</div>
+            <div class="form-text text-danger small">Username editable • Domain fixed</div>
         </div>
 
         <div class="tight-mb">
@@ -27,14 +27,14 @@
         </div>
 
         <div class="tight-mb">
-            <label class="form-label">Message (CKEditor 5)</label>
+            <label class="form-label">Message</label>
             <textarea name="body" id="bodyEditor"><?= htmlspecialchars($body_val) ?></textarea>
             <div class="form-text mt-1 small">
                 Placeholders: [-email-] [-emailuser-] [-emaildomain-] [-time-] [-randommd5-]
             </div>
         </div>
 
-        <!-- CKEditor script block above goes here -->
+        <!-- CKEditor 5 – ultra-compact toolbar (paste the script above here) -->
 
         <div class="tight-mb">
             <label class="form-label">Attachments</label>
@@ -42,21 +42,21 @@
         </div>
 
         <div class="tight-mb">
-            <label class="form-label">Recipients (one per line)</label>
+            <label class="form-label">Recipients</label>
             <textarea name="emails" class="form-control form-control-sm" rows="6" required placeholder="email1@example.com&#10;email2@example.com"></textarea>
         </div>
 
         <div class="d-grid gap-2 d-md-flex justify-content-md-between mt-4">
             <button type="button" class="btn btn-outline-info btn-lg flex-fill" id="previewBtn">
-                <i class="bi bi-eye me-2"></i>Open Preview
+                <i class="bi bi-eye me-2"></i>Preview
             </button>
             <button type="submit" class="btn btn-primary btn-lg flex-fill">
-                <i class="bi bi-send me-2"></i>Start Sending
+                <i class="bi bi-send me-2"></i>Send
             </button>
         </div>
     </form>
 
     <div class="text-center mt-4 small text-muted">
-        <strong>Created by 4RR0W H43D</strong> • Dark mode • CKEditor 5
+        4RR0W H43D • Dark • Ultra-compact CKEditor
     </div>
 </div>
