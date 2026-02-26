@@ -1,7 +1,8 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE – Fields Persisted After Send
- * From Name, Username, Reply-To, Subject, Message body all restored
+ * Full-Page Dark Bulk Mailer with TinyMCE – Preview Modal Fixed
+ * SMTP hidden | From Email username editable + domain fixed
+ * Persists: From Name, Username, Reply-To, Subject, Message body
  */
 
 session_start();
@@ -33,16 +34,16 @@ $admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
 $max_attach_size = 10 * 1024 * 1024;
 
-// Restore previously saved values (after "Back")
+// Restore saved data
 $saved = $_SESSION['saved_form'] ?? [];
-$sender_name_val     = htmlspecialchars($saved['sender_name']     ?? $smtp['from_name']);
+$sender_name_val     = htmlspecialchars($saved['sender_name'] ?? $smtp['from_name']);
 $sender_username_val = htmlspecialchars($saved['sender_username'] ?? $default_sender_username);
-$reply_to_val        = htmlspecialchars($saved['reply_to']        ?? '');
-$subject_val         = htmlspecialchars($saved['subject']         ?? '');
-$body_val            = $saved['body'] ?? '';  // raw HTML from TinyMCE
-unset($_SESSION['saved_form']); // clear after restore
+$reply_to_val        = htmlspecialchars($saved['reply_to'] ?? '');
+$subject_val         = htmlspecialchars($saved['subject'] ?? '');
+$body_val            = $saved['body'] ?? '';
+unset($_SESSION['saved_form']);
 
-// Full sender email (username + fixed domain)
+// Full sender email
 $sender_email = $sender_username_val . '@' . $smtp_domain;
 
 // ────────────────────────────────────────────────
@@ -134,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $body_raw     = $_POST['body'] ?? '';
     $to_list      = trim($_POST['emails'] ?? '');
 
-    // Save all important fields so they restore after "Back"
+    // Save all fields for restore after "Back"
     $_SESSION['saved_form'] = [
         'sender_name'     => $sender_name,
         'sender_username' => $sender_username,
@@ -321,7 +322,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         </div>
                     </div>
 
-                    <!-- TinyMCE with your API key – immediate load -->
+                    <!-- TinyMCE with your API key – loads immediately -->
                     <script>
                         tinymce.init({
                             selector: '#bodyEditor',
@@ -377,7 +378,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <!-- Preview Modal -->
     <div class="modal fade" id="previewModal" tabindex="-1">
         <div class="modal-dialog modal-xl">
-            <div class="modal-content">
+            <div class="modal-content bg-dark text-light border-secondary">
                 <!-- Filled dynamically -->
             </div>
         </div>
@@ -398,22 +399,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             fetch('', { method: 'POST', body: formData })
                 .then(r => r.text())
                 .then(html => {
+                    // Update only the modal content, not the whole structure
                     document.querySelector('#previewModal .modal-content').innerHTML = html;
-                    const modal = new bootstrap.Modal(previewModalEl);
-                    modal.show();
+
+                    // Re-attach close button listener (in case content overwrite breaks it)
+                    const closeBtn = document.querySelector('#previewModal .btn-close');
+                    if (closeBtn) {
+                        closeBtn.onclick = function() {
+                            if (previewModal) previewModal.hide();
+                        };
+                    }
                 })
-                .catch(e => console.error('Preview failed', e));
+                .catch(e => console.error('Preview failed:', e));
         }
 
         previewBtn.addEventListener('click', function () {
             if (!previewModal) {
-                previewModal = new bootstrap.Modal(previewModalEl);
+                previewModal = new bootstrap.Modal(previewModalEl, {
+                    backdrop: true,    // allow closing by clicking outside
+                    keyboard: true     // allow Esc key to close
+                });
             }
+
+            // Load preview once when opening
             updatePreview();
+
             previewModal.show();
         });
 
-        previewModalEl.addEventListener('shown.bs.modal', updatePreview);
+        // Ensure close works even after content update
+        previewModalEl.addEventListener('hidden.bs.modal', function () {
+            // Optional: clean up if needed
+        });
     </script>
 </body>
 </html>
