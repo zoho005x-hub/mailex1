@@ -1,71 +1,71 @@
 <?php
 /**
- * Advanced PHPMailer Bulk Sender - Complex Edition 2026
- * Single file - Bootstrap 5 - Queue + Progress + CSV personalization
- * Author: Grok (xAI) - Use at your own risk - Only for legitimate consented sending
+ * Modern Bulk Mailer – 2026 Edition (Bootstrap 5)
+ * SMTP settings hidden – only sender email is editable
+ * ZeptoMail SMTP + Reply-To + Attachments + Validation + Live HTML Preview
  */
 
-session_start();
+// Show errors during testing (disable in production!)
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
 // ────────────────────────────────────────────────
-// SECURITY & CSRF
+// CONFIG – SMTP settings are now hidden / hardcoded
 // ────────────────────────────────────────────────
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$csrf_token = $_SESSION['csrf_token'];
-
-// ────────────────────────────────────────────────
-// CONFIG DEFAULTS
-// ────────────────────────────────────────────────
-$defaults = [
-    'smtp_host'     => 'smtp.zeptomail.com',
-    'smtp_port'     => 587,
-    'smtp_secure'   => 'tls',
-    'smtp_user'     => 'emailapikey',
-    'smtp_pass'     => 'YOUR_SMTP_TOKEN_HERE',
-    'from_email'    => 'postmail@yourdomain.cc',
-    'from_name'     => 'Company Name',
-    'reply_to'      => '',
-    'admin_pass'    => 'B0TH',           // ← CHANGE THIS!
-    'delay_us'      => 250000,            // 0.25 sec
-    'max_per_run'   => 50,                // prevent timeout
+$smtp = [
+    'host'     => 'smtp.zeptomail.com',
+    'port'     => 587,
+    'secure'   => 'tls',
+    'username' => 'emailapikey',
+    'password' => 'wSsVR613+0LyBqt0yTavdO4wyggHAVykHBh03Val6XP8Gv/E98c5khfMBwPyFaIYEjJuFTsW8Lp7n0oJhzJYjdh5z1AICSiF9mqRe1U4J3x17qnvhDzNWWhflxGPKY8Oww9rk2hjFMoq+g==',
+    'from_name'=> 'Your App Name',
 ];
 
-// Load from session or defaults
-$smtp = [];
-foreach ($defaults as $k => $v) {
-    $smtp[$k] = $_SESSION['smtp'][$k] ?? $v;
-}
+// Only this part is editable on the form
+$default_sender_email = 'postmail@treworgy-baldacci.cc';
+
+$admin_password = "B0TH"; // ← CHANGE THIS!
+$delay_us = 150000;
+$max_attach_size = 10 * 1024 * 1024; // 10 MB
+
+$preview_sample_email = 'test.user@example.com';
 
 // ────────────────────────────────────────────────
-// AUTHENTICATION
+// PASSWORD PROTECTION
 // ────────────────────────────────────────────────
-if (!isset($_SESSION['authenticated']) || $_SESSION['authenticated'] !== true) {
-    if (isset($_POST['admin_pass']) && $_POST['admin_pass'] === $defaults['admin_pass']) {
-        $_SESSION['authenticated'] = true;
+session_start();
+if (!isset($_SESSION['auth']) || $_SESSION['auth'] !== true) {
+    if (isset($_POST['pass']) && $_POST['pass'] === $admin_password) {
+        $_SESSION['auth'] = true;
     } else {
         ?>
         <!DOCTYPE html>
-        <html lang="en" data-bs-theme="dark">
+        <html lang="en" data-bs-theme="light">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>Login</title>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-            <style>body{background:#0d1117;display:flex;align-items:center;justify-content:center;min-height:100vh;}.card{max-width:400px;}</style>
+            <style>
+                body { background: linear-gradient(135deg, #667eea, #764ba2); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+                .login-card { max-width: 380px; width: 100%; }
+            </style>
         </head>
         <body>
-            <div class="card bg-dark border-secondary shadow-lg p-4">
-                <h4 class="text-center mb-4">Admin Login</h4>
-                <form method="post">
-                    <input type="password" name="admin_pass" class="form-control mb-3" placeholder="Password" autofocus required>
-                    <button type="submit" class="btn btn-primary w-100">Login</button>
-                </form>
+            <div class="card login-card shadow-lg border-0">
+                <div class="card-body p-4 text-center">
+                    <h4 class="mb-3">Enter Password</h4>
+                    <form method="post">
+                        <input type="password" name="pass" class="form-control mb-3" autofocus required>
+                        <button type="submit" class="btn btn-primary w-100">Login</button>
+                    </form>
+                </div>
             </div>
         </body>
         </html>
-        <?php exit;
+        <?php
+        exit;
     }
 }
 
@@ -79,286 +79,312 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 // ────────────────────────────────────────────────
-// QUEUE & LOG (session-based for simplicity)
+// DISPOSABLE DOMAIN CHECK (unchanged)
 // ────────────────────────────────────────────────
-if (!isset($_SESSION['mail_queue'])) {
-    $_SESSION['mail_queue'] = [];
-    $_SESSION['mail_log']   = [];
+function isDisposable($email) {
+    $domain = strtolower(substr(strrchr($email, "@"), 1));
+    $disposableList = [
+        'mailinator.com','tempmail.com','10minutemail.com','guerrillamail.com',
+        'yopmail.com','trashmail.com','sharklasers.com','dispostable.com',
+        'temp-mail.org','throwawaymail.com','maildrop.cc','getairmail.com',
+        'fakeinbox.com','33mail.com','armyspy.com','cuvox.de','dayrep.com',
+        'einrot.com','fleckens.hu','gustr.com','jourrapide.com','rhyta.com',
+        'superrito.com','teleworm.us','webbox.us','mobimail.ga','temp-mail.io',
+        'moakt.com','mail.tm','tempmail.plus',
+    ];
+    return in_array($domain, $disposableList);
 }
 
 // ────────────────────────────────────────────────
-// HANDLE ACTIONS
+// PREVIEW HANDLER (updated to show sender email)
 // ────────────────────────────────────────────────
-$alert = '';
-$alert_type = 'info';
+if (isset($_POST['action']) && $_POST['action'] === 'preview') {
+    $body_raw = $_POST['body'] ?? '';
+    $sender_email_preview = $_POST['sender_email'] ?? $default_sender_email;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // CSRF check
-    if (!isset($_POST['csrf']) || $_POST['csrf'] !== $csrf_token) {
-        $alert = "Invalid CSRF token.";
-        $alert_type = 'danger';
-    } else {
-        $action = $_POST['action'] ?? '';
+    $body_preview = str_replace(
+        ['[-email-]', '[-time-]', '[-randommd5-]'],
+        [$preview_sample_email, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
+        $body_raw
+    );
+    $plain_preview = strip_tags($body_preview);
+    ?>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">Live Preview</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+            <small class="text-muted">From: <?= htmlspecialchars($sender_email_preview) ?></small><br>
+            <small class="text-muted">To (sample): <?= htmlspecialchars($preview_sample_email) ?></small>
+            <hr class="my-2">
+            <ul class="nav nav-tabs nav-fill small" id="previewTab">
+                <li class="nav-item"><button class="nav-link active" id="html-tab" data-bs-toggle="tab" data-bs-target="#html">HTML</button></li>
+                <li class="nav-item"><button class="nav-link" id="plain-tab" data-bs-toggle="tab" data-bs-target="#plain">Plain</button></li>
+            </ul>
+            <div class="tab-content border border-top-0 p-3 bg-white rounded-bottom" style="min-height:300px;">
+                <div class="tab-pane fade show active" id="html"><?= $body_preview ?></div>
+                <div class="tab-pane fade" id="plain"><pre class="m-0"><?= htmlspecialchars($plain_preview) ?></pre></div>
+            </div>
+        </div>
+    </div>
+    <?php exit;
+}
 
-        if ($action === 'save_smtp') {
-            // Save SMTP settings to session
-            $smtp_keys = ['host','port','secure','user','pass','from_email','from_name','reply_to'];
-            foreach ($smtp_keys as $k) {
-                $key = 'smtp_' . $k;
-                $_SESSION['smtp'][$k] = $_POST[$key] ?? $smtp[$k];
-            }
-            $alert = "SMTP settings saved.";
-            $alert_type = 'success';
-        }
+// ────────────────────────────────────────────────
+// SENDING LOGIC
+// ────────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
+    $sender_email = trim($_POST['sender_email'] ?? $default_sender_email);
+    $to_list      = trim($_POST['emails'] ?? '');
+    $subject_raw  = trim($_POST['subject'] ?? '');
+    $body_raw     = $_POST['body'] ?? '';
+    $sender_name  = trim($_POST['sender_name'] ?? $smtp['from_name']);
+    $reply_to     = trim($_POST['reply_to'] ?? '');
 
-        elseif ($action === 'add_to_queue') {
-            $recipients = array_filter(array_map('trim', explode("\n", $_POST['emails'] ?? '')));
-            $subject    = trim($_POST['subject'] ?? '');
-            $body       = $_POST['body'] ?? '';
-            $attach_receiver = isset($_POST['attach_receiver_email']);
+    $emails = array_filter(array_map('trim', explode("\n", $to_list)));
 
-            if (empty($recipients) || empty($subject) || empty($body)) {
-                $alert = "Missing required fields.";
-                $alert_type = 'danger';
-            } else {
-                foreach ($recipients as $email) {
-                    if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                        $_SESSION['mail_queue'][] = [
-                            'email'   => $email,
-                            'subject' => $subject,
-                            'body'    => $body,
-                            'attach_receiver' => $attach_receiver,
-                            'status'  => 'pending'
-                        ];
-                    }
-                }
-                $alert = count($recipients) . " email(s) added to queue.";
-                $alert_type = 'success';
-            }
-        }
-
-        elseif ($action === 'process_queue') {
-            $processed = 0;
-            $max_run   = $defaults['max_per_run'];
-
-            foreach ($_SESSION['mail_queue'] as &$item) {
-                if ($item['status'] === 'pending' && $processed < $max_run) {
-                    $mail = new PHPMailer(true);
-                    try {
-                        $mail->isSMTP();
-                        $mail->Host       = $smtp['host'];
-                        $mail->Port       = (int)$smtp['port'];
-                        $mail->SMTPAuth   = true;
-                        $mail->Username   = $smtp['username'];
-                        $mail->Password   = $smtp['password'];
-                        $mail->SMTPSecure = $smtp['secure'];
-
-                        $mail->setFrom($smtp['from_email'], $smtp['from_name']);
-                        if (!empty($smtp['reply_to'])) {
-                            $mail->addReplyTo($smtp['reply_to']);
-                        }
-                        $mail->addAddress($item['email']);
-
-                        $body = $item['body'];
-                        if ($item['attach_receiver']) {
-                            $body = "<p><strong>To:</strong> {$item['email']}</p>\n" . $body;
-                        }
-
-                        $body = str_replace(
-                            ['[-email-]', '[-emailuser-]', '[-emaildomain-]', '[-time-]', '[-randommd5-]'],
-                            [
-                                $item['email'],
-                                explode('@', $item['email'])[0] ?? '',
-                                explode('@', $item['email'])[1] ?? '',
-                                date('Y-m-d H:i:s'),
-                                md5(uniqid(rand(), true))
-                            ],
-                            $body
-                        );
-
-                        $mail->isHTML(true);
-                        $mail->Subject = $item['subject'];
-                        $mail->Body    = $body;
-                        $mail->AltBody = strip_tags($body);
-
-                        $mail->send();
-                        $item['status'] = 'sent';
-                        $_SESSION['mail_log'][] = ['time' => date('H:i:s'), 'email' => $item['email'], 'status' => 'OK'];
-                        $processed++;
-                    } catch (Exception $e) {
-                        $item['status'] = 'failed';
-                        $_SESSION['mail_log'][] = ['time' => date('H:i:s'), 'email' => $item['email'], 'status' => $mail->ErrorInfo];
-                    }
+    $attachments = [];
+    if (!empty($_FILES['attachments']['name'][0])) {
+        foreach ($_FILES['attachments']['tmp_name'] as $key => $tmp_name) {
+            if ($_FILES['attachments']['error'][$key] === UPLOAD_ERR_OK) {
+                $file_name = $_FILES['attachments']['name'][$key];
+                $file_size = $_FILES['attachments']['size'][$key];
+                $file_type = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+                $allowed = ['pdf','jpg','jpeg','png','txt','doc','docx','zip','rar'];
+                if (in_array($file_type, $allowed) && $file_size <= $max_attach_size) {
+                    $attachments[] = ['path' => $tmp_name, 'name' => $file_name];
                 }
             }
-            $alert = $processed ? "$processed email(s) processed." : "Queue empty or all processed.";
-            $alert_type = $processed ? 'success' : 'info';
-        }
-
-        elseif ($action === 'clear_queue') {
-            $_SESSION['mail_queue'] = [];
-            $alert = "Queue cleared.";
-            $alert_type = 'warning';
         }
     }
+
+    ob_start();
+    ?>
+    <!DOCTYPE html>
+    <html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Sending...</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            body { padding:1.5rem; background:#f8f9fa; font-family:monospace; }
+            pre { background:#fff; border:1px solid #dee2e6; padding:1rem; border-radius:6px; max-height:60vh; overflow-y:auto; }
+            .ok { color:#198754; font-weight:bold; }
+            .fail { color:#dc3545; font-weight:bold; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h4>Sending Progress</h4>
+            <pre><?php
+    $count = 0;
+    $success = 0;
+    foreach ($emails as $email) {
+        $count++;
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            echo "[$count] $email → <span class='fail'>invalid</span>\n";
+            continue;
+        }
+        $domain = substr(strrchr($email, "@"), 1);
+        if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
+            echo "[$count] $email → <span class='fail'>no MX</span>\n";
+            continue;
+        }
+        if (isDisposable($email)) {
+            echo "[$count] $email → <span class='fail'>disposable</span>\n";
+            continue;
+        }
+
+        $body = str_replace(
+            ['[-email-]', '[-time-]', '[-randommd5-]'],
+            [$email, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
+            $body_raw
+        );
+
+        $mail = new PHPMailer(true);
+        try {
+            $mail->isSMTP();
+            $mail->Host       = $smtp['host'];
+            $mail->Port       = $smtp['port'];
+            $mail->SMTPAuth   = true;
+            $mail->Username   = $smtp['username'];
+            $mail->Password   = $smtp['password'];
+            $mail->SMTPSecure = $smtp['secure'];
+
+            $mail->setFrom($sender_email, $sender_name);
+            if ($reply_to && filter_var($reply_to, FILTER_VALIDATE_EMAIL)) {
+                $mail->addReplyTo($reply_to);
+            }
+            $mail->addAddress($email);
+
+            $mail->isHTML(true);
+            $mail->Subject = $subject_raw;
+            $mail->Body    = $body;
+            $mail->AltBody = strip_tags($body);
+
+            foreach ($attachments as $att) {
+                $mail->addAttachment($att['path'], $att['name']);
+            }
+
+            $mail->send();
+            $success++;
+            echo "[$count] $email → <span class='ok'>OK</span>\n";
+        } catch (Exception $e) {
+            echo "[$count] $email → <span class='fail'>" . htmlspecialchars($mail->ErrorInfo) . "</span>\n";
+        }
+        flush();
+        ob_flush();
+        usleep($delay_us);
+    }
+    foreach ($attachments as $att) @unlink($att['path']);
+    echo "\nDone. Sent: $success / " . count($emails);
+    ?></pre>
+            <a href="?" class="btn btn-outline-primary mt-3">Back</a>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
 }
 ?>
 
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Advanced PHPMailer Bulk Sender</title>
+    <title>4RR0W H43D Mailer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-        body { padding: 1.5rem; background:#0d1117; color:#c9d1d9; font-size:0.95rem; }
-        .card { background:#161b22; border:1px solid #30363d; border-radius:8px; }
-        .form-control, .form-select { background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
-        .form-control:focus { border-color:#1f6feb; box-shadow:0 0 0 0.2rem rgba(31,111,235,0.25); }
-        .btn-primary { background:#1f6feb; border:none; }
-        .btn-outline-secondary { border-color:#30363d; }
-        .alert { font-size:0.9rem; }
-        .progress { height:0.6rem; }
+        body { background:#f8f9fa; padding:1.5rem 1rem; font-size:0.95rem; }
+        .card { max-width:580px; margin:auto; border:none; box-shadow:0 2px 12px rgba(0,0,0,0.08); border-radius:10px; }
+        .card-header { background:#0d6efd; color:white; padding:0.9rem; text-align:center; font-weight:600; }
+        .form-label { font-size:0.9rem; margin-bottom:0.35rem; font-weight:600; }
+        .form-control-sm { font-size:0.9rem; padding:0.45rem 0.65rem; }
+        .btn { font-size:0.95rem; }
+        .form-text { font-size:0.8rem; }
+        .tight-mb { margin-bottom:0.75rem !important; }
     </style>
 </head>
 <body>
-<div class="container">
-    <div class="card shadow">
-        <div class="card-header text-center py-3">
-            <h4 class="mb-0"><i class="bi bi-envelope-at me-2"></i>Advanced PHPMailer Bulk Sender</h4>
+    <div class="card">
+        <div class="card-header">
+            <i class="bi bi-envelope-at me-1"></i>4RR0W Mailer
         </div>
+        <div class="card-body p-3">
 
-        <div class="card-body p-4">
+            <form method="post" enctype="multipart/form-data" id="mailerForm">
+                <input type="hidden" name="action" value="send">
 
-            <?php if ($alert): ?>
-            <div class="alert alert-<?= $alert_type ?> alert-dismissible fade show" role="alert">
-                <?= $alert ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            <?php endif; ?>
-
-            <form method="post" enctype="multipart/form-data">
-                <input type="hidden" name="csrf" value="<?= $csrf_token ?>">
-
-                <!-- SMTP Settings -->
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <label class="form-label">SMTP Host</label>
-                        <input type="text" name="smtp_host" class="form-control" value="<?= htmlspecialchars($smtp['host']) ?>" required>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Port</label>
-                        <input type="number" name="smtp_port" class="form-control" value="<?= htmlspecialchars($smtp['port']) ?>" required>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Secure</label>
-                        <select name="smtp_secure" class="form-select">
-                            <option value="">None</option>
-                            <option value="tls" <?= $smtp['secure']==='tls'?'selected':'' ?>>STARTTLS</option>
-                            <option value="ssl" <?= $smtp['secure']==='ssl'?'selected':'' ?>>SSL/TLS</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Username</label>
-                        <input type="text" name="smtp_username" class="form-control" value="<?= htmlspecialchars($smtp['username']) ?>" required>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Password</label>
-                        <input type="password" name="smtp_password" class="form-control" value="<?= htmlspecialchars($smtp['password']) ?>" required>
-                    </div>
+                <div class="tight-mb">
+                    <label class="form-label">From Name</label>
+                    <input type="text" name="sender_name" class="form-control form-control-sm" value="<?= htmlspecialchars($smtp['from_name']) ?>" required>
                 </div>
 
-                <!-- Sender -->
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <label class="form-label">From Name</label>
-                        <input type="text" name="sender_name" class="form-control" value="<?= htmlspecialchars($smtp['from_name']) ?>" required>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">From Email</label>
-                        <input type="email" name="sender_email" class="form-control" value="<?= htmlspecialchars($smtp['from_email']) ?>" required>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Reply-To (optional)</label>
-                        <input type="email" name="reply_to" class="form-control" value="<?= htmlspecialchars($smtp['reply_to'] ?? '') ?>">
-                    </div>
+                <div class="tight-mb">
+                    <label class="form-label">From Email <small>(editable)</small></label>
+                    <input type="email" name="sender_email" class="form-control form-control-sm" value="<?= htmlspecialchars($default_sender_email) ?>" required>
+                    <div class="form-text text-danger">Must be verified in ZeptoMail</div>
                 </div>
 
-                <!-- Message -->
-                <div class="mb-4">
+                <div class="tight-mb">
+                    <label class="form-label">Reply-To (optional)</label>
+                    <input type="email" name="reply_to" class="form-control form-control-sm" placeholder="optional">
+                </div>
+
+                <div class="tight-mb">
                     <label class="form-label">Subject</label>
-                    <input type="text" name="subject" class="form-control mb-2" required>
-                    <label class="form-label">HTML Message</label>
-                    <textarea name="body" class="form-control" rows="8" required placeholder="Hello [-emailuser-], your domain is [-emaildomain-] ..."></textarea>
+                    <input type="text" name="subject" class="form-control form-control-sm" required>
+                </div>
+
+                <div class="tight-mb">
+                    <label class="form-label">Message</label>
+                    <textarea name="body" id="bodyEditor" class="form-control form-control-sm" rows="7" required placeholder="Hello [-emailuser-], domain: [-emaildomain-] ..."></textarea>
                     <div class="form-text mt-1">
-                        Placeholders: [-email-] [-emailuser-] [-emaildomain-] [-time-] [-randommd5-]
+                        [-email-] [-emailuser-] [-emaildomain-] [-time-] [-randommd5-]
                     </div>
                 </div>
 
-                <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" name="attach_receiver_email" value="1" id="attachReceiver" checked>
-                    <label class="form-check-label" for="attachReceiver">Add "To: [-email-]" line at top</label>
+                <div class="form-check tight-mb">
+                    <input class="form-check-input" type="checkbox" name="attach_receiver_email" value="1" id="attachRec" checked>
+                    <label class="form-check-label small" for="attachRec">Add "To: [-email-]" line</label>
                 </div>
 
-                <!-- Attachments -->
-                <div class="mb-4">
-                    <label class="form-label">Attachments (all recipients)</label>
-                    <input type="file" name="attachments[]" class="form-control" multiple>
+                <div class="tight-mb">
+                    <label class="form-label">Attachments</label>
+                    <input type="file" name="attachments[]" class="form-control form-control-sm" multiple>
                 </div>
 
-                <!-- Recipients -->
-                <div class="mb-4">
-                    <label class="form-label">Recipients (one per line)</label>
-                    <textarea name="emails" class="form-control" rows="6" required placeholder="user1@domain.com\nuser2@domain.com"></textarea>
+                <div class="tight-mb">
+                    <label class="form-label">Recipients</label>
+                    <textarea name="emails" class="form-control form-control-sm" rows="5" required placeholder="email1@example.com&#10;email2@example.com"></textarea>
                 </div>
 
-                <!-- Actions -->
-                <div class="d-flex gap-2 flex-wrap">
-                    <button type="submit" name="action" value="save_smtp" class="btn btn-outline-secondary btn-sm">
-                        <i class="bi bi-save"></i> Save SMTP
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm flex-fill" id="previewBtn">
+                        <i class="bi bi-eye"></i> Preview
                     </button>
-                    <button type="submit" name="action" value="add_to_queue" class="btn btn-outline-info btn-sm">
-                        <i class="bi bi-plus-circle"></i> Add to Queue
-                    </button>
-                    <button type="submit" name="action" value="process_queue" class="btn btn-primary btn-sm">
-                        <i class="bi bi-play-circle"></i> Process Queue
-                    </button>
-                    <button type="submit" name="action" value="clear_queue" class="btn btn-outline-danger btn-sm">
-                        <i class="bi bi-trash"></i> Clear Queue
+                    <button type="submit" class="btn btn-primary btn-sm flex-fill">
+                        <i class="bi bi-send"></i> Send
                     </button>
                 </div>
             </form>
 
-            <!-- Queue Status -->
-            <div class="mt-4">
-                <h6>Queue Status (<?= count($_SESSION['mail_queue']) ?> pending)</h6>
-                <?php if (!empty($_SESSION['mail_queue'])): ?>
-                <div class="progress mb-2">
-                    <?php
-                    $total = count($_SESSION['mail_queue']);
-                    $sent  = count(array_filter($_SESSION['mail_queue'], fn($i) => $i['status'] === 'sent'));
-                    $pct   = $total ? round(($sent / $total) * 100) : 0;
-                    ?>
-                    <div class="progress-bar bg-success" style="width:<?= $pct ?>%"><?= $pct ?>%</div>
-                </div>
-                <?php endif; ?>
-
-                <?php if (!empty($_SESSION['mail_log'])): ?>
-                <div class="small bg-dark p-2 rounded">
-                    <strong>Recent Log:</strong><br>
-                    <?php foreach (array_slice(array_reverse($_SESSION['mail_log']), 0, 10) as $log): ?>
-                        [<?= $log['time'] ?>] <?= htmlspecialchars($log['email']) ?> → <?= htmlspecialchars($log['status']) ?><br>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
+            <div class="text-center mt-3 small text-muted">
+                4RR0W H43D • SMTP hidden • Test small
             </div>
-
         </div>
     </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Preview Modal (keep your existing modal code here) -->
+    <div class="modal fade" id="previewModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <!-- filled by JS -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Your existing live preview script here
+        const previewModalEl = document.getElementById('previewModal');
+        const previewBtn = document.getElementById('previewBtn');
+        const bodyEditor = document.getElementById('bodyEditor');
+        let previewModal = null;
+        let debounceTimer = null;
+
+        function updatePreview() {
+            const formData = new FormData(document.getElementById('mailerForm'));
+            formData.set('action', 'preview');
+
+            fetch('', { method: 'POST', body: formData })
+                .then(r => r.text())
+                .then(html => {
+                    document.querySelector('#previewModal .modal-content').innerHTML = html;
+                })
+                .catch(e => console.error('Preview failed', e));
+        }
+
+        previewBtn.addEventListener('click', () => {
+            if (!previewModal) previewModal = new bootstrap.Modal(previewModalEl);
+            updatePreview();
+            previewModal.show();
+        });
+
+        bodyEditor.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                if (previewModal && previewModalEl.classList.contains('show')) {
+                    updatePreview();
+                }
+            }, 500);
+        });
+
+        previewModalEl.addEventListener('shown.bs.modal', updatePreview);
+    </script>
 </body>
 </html>
