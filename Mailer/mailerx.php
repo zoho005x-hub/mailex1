@@ -16,6 +16,7 @@ error_reporting(E_ALL);
 // CONFIG
 // ────────────────────────────────────────────────
 $smtp_domain = 'treworgy-baldacci.cc';
+$smtp_domain = 'bellshah.cc';
 
 $smtp = [
     'host'     => 'smtp.zeptomail.com',
