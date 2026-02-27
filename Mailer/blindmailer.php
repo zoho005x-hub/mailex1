@@ -26,7 +26,7 @@ $smtp = [
     'from_name'=> 'Name or Company Name',
 ];
 
-$preview_sample_email = 'test.user@example.com';
+$preview_sample_email = 'khaddock@jmmiles.com';
 
 $admin_password = "US3R"; // ← CHANGE THIS!
 $delay_us = 150000;
