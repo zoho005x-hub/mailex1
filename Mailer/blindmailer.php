@@ -19,7 +19,7 @@ error_reporting($debug ? E_ALL : E_ALL & ~E_NOTICE & ~E_WARNING);
 // ────────────────────────────────────────────────
 $smtp = [
     'host'     => 'mail.jmmiles.com',
-    'port'     => 587,
+    'port'     => 465,
     'secure'   => 'tls',
     'username' => 'khaddock@jmmiles.com',
     'password' => 'Colinh22!',
