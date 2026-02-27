@@ -1,7 +1,7 @@
 <?php
 /**
  * Full-Page Dark Bulk Mailer with TinyMCE
- * Sender email fully editable + persisted after send → Back
+ * Fully editable sender email + persisted after send → Back
  * Server-side temporary attachment storage → files remain after send → Back
  * Detailed vertical report: sent / not sent with exact reasons
  */
@@ -17,12 +17,6 @@ error_reporting($debug ? E_ALL : E_ALL & ~E_NOTICE & ~E_WARNING);
 // ────────────────────────────────────────────────
 // CONFIG
 // ────────────────────────────────────────────────
-$allowed_domains = [
-    'btsflaw.cc',
-    'tarangogroup.cc',
-    // Add more verified domains here if needed
-];
-
 $smtp = [
     'host'     => 'smtp.zeptomail.com',
     'port'     => 587,
@@ -124,10 +118,6 @@ function isDisposable($email) {
 }
 
 // Validation helpers
-function isValidEmailUsername($username) {
-    return preg_match('/^[a-zA-Z0-9.!#$%&\'*+\/=?^_`{|}~-]{1,64}$/', $username);
-}
-
 function isValidEmail($email) {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false && !isDisposable($email);
 }
@@ -397,7 +387,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .tox-tbtn { min-width:26px !important; padding:2px !important; margin:0 1px !important; }
         .error-message { color:#f85149; font-size:0.85rem; margin-top:0.25rem; }
         .prev-files { font-size:0.85rem; color:#8b949e; margin-top:0.3rem; background:#21262d; padding:0.5rem; border-radius:4px; }
-        .input-group-text { background:#21262d; color:#c9d1d9; border:1px solid #30363d; font-size:0.9rem; }
         .is-valid { border-color:#3fb950 !important; background:#1e3a2f !important; }
         .is-invalid { border-color:#f85149 !important; background:#3d1f1f !important; }
     </style>
@@ -418,10 +407,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     </div>
 
                     <div class="tight-mb">
-                        <label class="form-label">From Email (editable)</label>
+                        <label class="form-label">From Email (fully editable)</label>
                         <input type="email" name="sender_email" id="sender_email" class="form-control form-control-sm" value="<?= $sender_email_val ?>" required placeholder="yourname@yourdomain.com">
                         <div class="form-text small mt-1 text-muted">
-                            Enter full email address. Use verified domains for best deliverability.
+                            Enter the full sender email address you want to use.
                         </div>
                         <div id="senderEmailError" class="error-message"></div>
                     </div>
