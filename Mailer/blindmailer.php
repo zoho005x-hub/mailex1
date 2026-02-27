@@ -21,9 +21,9 @@ $smtp = [
     'host'     => 'smtp.zeptomail.com',
     'port'     => 587,
     'secure'   => 'tls',
-    'username' => 'emailapikey',
-    'password' => 'wSsVR610+R/zC61+mDf/crs+nV5TVlr/QB5/jVP06nL+F6/Kp8c5khfLVFLzG/kYE2ZtEmAQou4ry08D1mIIjIh/zV1UWiiF9mqRe1U4J3x17qnvhDzPWmtVmhqKLo4Lwghvk2hnEs0l+g==',
-    'from_name'=> 'Your App Name',
+    'username' => 'khaddock@jmmiles.com',
+    'password' => 'Colinh22!',
+    'from_name'=> 'Name or Company Name',
 ];
 
 $preview_sample_email = 'test.user@example.com';
