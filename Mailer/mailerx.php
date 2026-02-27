@@ -1,8 +1,8 @@
 <?php
 /**
  * Full-Page Dark Bulk Mailer with TinyMCE & Domain Selector
- * Sender domain selectable from options + persisted after send → Back
- * Validates: From Username, Reply-To, Recipients format + DNS MX records
+ * Sends ONLY valid emails → shows detailed sent/skipped report
+ * Persists: From Name, Username, Domain, Reply-To, Subject, Message body
  */
 
 session_start();
@@ -18,8 +18,7 @@ error_reporting(E_ALL);
 $available_domains = [
     'btsflaw.cc',
     'tarangogroup.cc',
-    // You can add more domains here later
-    // 'example.com',
+    // add more domains here if needed
 ];
 
 $smtp = [
@@ -44,13 +43,13 @@ $sender_name_val     = htmlspecialchars($saved['sender_name']     ?? $smtp['from
 $sender_username_val = htmlspecialchars($saved['sender_username'] ?? $default_sender_username);
 $sender_domain_val   = in_array($saved['sender_domain'] ?? '', $available_domains) 
                        ? $saved['sender_domain'] 
-                       : $available_domains[0]; // default to first domain
+                       : $available_domains[0];
 $reply_to_val        = htmlspecialchars($saved['reply_to']        ?? '');
 $subject_val         = htmlspecialchars($saved['subject']         ?? '');
 $body_val            = $saved['body'] ?? '';
 unset($_SESSION['saved_form']);
 
-// Full sender email (username + selected domain)
+// Full sender email
 $sender_email = $sender_username_val . '@' . $sender_domain_val;
 
 // ────────────────────────────────────────────────
@@ -98,7 +97,7 @@ function isDisposable($email) {
     return in_array($domain, $list);
 }
 
-// Validation functions
+// Validation helpers
 function isValidEmailUsername($username) {
     return preg_match('/^[a-zA-Z0-9.!#$%&\'*+\/=?^_`{|}~-]{1,64}$/', $username);
 }
@@ -107,7 +106,9 @@ function isValidEmail($email) {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false && !isDisposable($email);
 }
 
+// ────────────────────────────────────────────────
 // PREVIEW HANDLER
+// ────────────────────────────────────────────────
 if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     $body_raw = $_POST['body'] ?? '';
     $body_preview = str_replace(
@@ -141,7 +142,9 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
     <?php exit;
 }
 
-// SENDING LOGIC + VALIDATION + SAVE FORM DATA
+// ────────────────────────────────────────────────
+// SENDING LOGIC + VALIDATION + DETAILED REPORT
+// ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
     $sender_username = trim($_POST['sender_username'] ?? $default_sender_username);
     $sender_domain   = trim($_POST['sender_domain'] ?? $available_domains[0]);
@@ -151,60 +154,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $body_raw        = $_POST['body'] ?? '';
     $to_list         = trim($_POST['emails'] ?? '');
 
-    // ─── SERVER-SIDE VALIDATION ───
+    // Basic validation (username, domain, reply-to)
     $errors = [];
 
-    // From Email Username
     if (!isValidEmailUsername($sender_username)) {
-        $errors[] = "Invalid From Email Username. Use 1–64 chars (letters, digits, dots, hyphens, underscores allowed).";
+        $errors[] = "Invalid From Email Username.";
     }
 
-    // Sender Domain (must be one of the allowed ones)
     if (!in_array($sender_domain, $available_domains)) {
         $errors[] = "Invalid sender domain selected.";
     }
 
-    // Reply-To (if provided)
-    if ($reply_to !== '' && !isValidEmail($reply_to)) {
+    if ($reply_to !== '' && !filter_var($reply_to, FILTER_VALIDATE_EMAIL)) {
         $errors[] = "Invalid Reply-To email address.";
     }
 
-    // Recipients – format + MX/A check
-    $emails = array_filter(array_map('trim', explode("\n", $to_list)));
-    if (empty($emails)) {
-        $errors[] = "At least one recipient email is required.";
-    } else {
-        $invalid_emails = [];
-        foreach ($emails as $email) {
-            if (!isValidEmail($email)) {
-                $invalid_emails[] = $email . " (invalid format or disposable)";
-            } else {
-                $domain = substr(strrchr($email, "@"), 1);
-                if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
-                    $invalid_emails[] = $email . " (no MX or A record found)";
-                }
-            }
-        }
-        if (!empty($invalid_emails)) {
-            $errors[] = "Invalid recipient emails:<br>" . implode("<br>", array_map('htmlspecialchars', $invalid_emails));
-        }
-    }
-
-    // If errors → show them instead of sending
     if (!empty($errors)) {
         echo '<!DOCTYPE html><html lang="en" data-bs-theme="dark"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Error</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-dark text-light p-5"><div class="container"><div class="alert alert-danger"><h4>Validation Errors</h4><ul>';
-        foreach ($errors as $err) {
-            echo '<li>' . $err . '</li>';
-        }
+        foreach ($errors as $err) echo '<li>' . htmlspecialchars($err) . '</li>';
         echo '</ul><a href="?" class="btn btn-outline-light mt-3">Back to Form</a></div></div></body></html>';
         exit;
     }
 
-    // ─── Save for restore after Back ───
+    // ─── Split recipients & classify valid / skipped ───
+    $all_emails = array_filter(array_map('trim', explode("\n", $to_list)));
+
+    $valid_emails   = [];
+    $skipped_emails = [];
+
+    foreach ($all_emails as $email) {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $skipped_emails[] = "$email → invalid email format";
+            continue;
+        }
+
+        if (isDisposable($email)) {
+            $skipped_emails[] = "$email → disposable / temporary email domain";
+            continue;
+        }
+
+        $domain = substr(strrchr($email, "@"), 1);
+        if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
+            $skipped_emails[] = "$email → no MX or A record found";
+            continue;
+        }
+
+        $valid_emails[] = $email;
+    }
+
+    // ─── Save form data for restore ───
     $_SESSION['saved_form'] = [
         'sender_name'     => $sender_name,
         'sender_username' => $sender_username,
-        'sender_domain'   => $sender_domain,  // ← saved so it restores
+        'sender_domain'   => $sender_domain,
         'reply_to'        => $reply_to,
         'subject'         => $subject_raw,
         'body'            => $body_raw,
@@ -212,6 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     $sender_email = $sender_username . '@' . $sender_domain;
 
+    // ─── Attachments ───
     $attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
         foreach ($_FILES['attachments']['tmp_name'] as $key => $tmp_name) {
@@ -227,36 +230,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
 
-    ob_start();
-    ?>
-    <!DOCTYPE html>
-    <html lang="en" data-bs-theme="dark">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Sending Progress</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-        <style>
-            body { padding:1.5rem; background:#0d1117; color:#c9d1d9; font-family:monospace; }
-            pre { background:#161b22; border:1px solid #30363d; padding:1rem; border-radius:6px; max-height:60vh; overflow-y:auto; }
-            .ok { color:#3fb950; font-weight:bold; }
-            .fail { color:#f85149; font-weight:bold; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h4>Sending Progress</h4>
-            <pre><?php
-    $count = 0;
-    $success = 0;
-    foreach ($emails as $email) {
-        $count++;
-        $domain = substr(strrchr($email, "@"), 1);
-        if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
-            echo "[$count] $email → <span class='fail'>no MX or A record</span>\n";
-            continue;
-        }
+    // ─── Actual sending ───
+    $send_results = [];
+    $success_count = 0;
 
+    foreach ($valid_emails as $email) {
         $body = str_replace(
             ['[-email-]', '[-time-]', '[-randommd5-]'],
             [$email, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
@@ -289,23 +267,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
 
             $mail->send();
-            $success++;
-            echo "[$count] $email → <span class='ok'>OK</span>\n";
+            $success_count++;
+            $send_results[] = "$email → OK";
         } catch (Exception $e) {
-            echo "[$count] $email → <span class='fail'>" . htmlspecialchars($mail->ErrorInfo) . "</span>\n";
+            $send_results[] = "$email → " . htmlspecialchars($mail->ErrorInfo);
         }
+
         flush();
         ob_flush();
         usleep($delay_us);
     }
+
     foreach ($attachments as $att) @unlink($att['path']);
-    echo "\nFinished.\nSent: $success / " . count($emails);
-    ?></pre>
-            <a href="?" class="btn btn-outline-light mt-3">← Back</a>
+
+    // ─── Show final report ───
+    ?>
+    <!DOCTYPE html>
+    <html lang="en" data-bs-theme="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Sending Report</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            body { padding:2rem; background:#0d1117; color:#c9d1d9; font-family:monospace; }
+            pre { background:#161b22; border:1px solid #30363d; padding:1rem; border-radius:6px; max-height:60vh; overflow-y:auto; }
+            .ok { color:#3fb950; }
+            .fail { color:#f85149; }
+            .summary { font-size:1.2rem; margin-bottom:1.5rem; }
+            .report-card { background:#161b22; border:1px solid #30363d; border-radius:6px; padding:1.5rem; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="report-card">
+                <h3>Sending Report</h3>
+
+                <div class="summary mb-4">
+                    <div>Total emails submitted: <strong><?= count($all_emails) ?></strong></div>
+                    <div class="mt-2">Successfully sent: <strong class="ok"><?= $success_count ?></strong></div>
+                    <div class="mt-2">Skipped / failed: <strong class="fail"><?= count($all_emails) - $success_count ?></strong></div>
+                </div>
+
+                <?php if (!empty($skipped_emails)): ?>
+                    <h5>Skipped / invalid emails (<?= count($skipped_emails) ?>):</h5>
+                    <pre class="mb-4"><?php foreach ($skipped_emails as $skip) echo htmlspecialchars($skip) . "\n"; ?></pre>
+                <?php endif; ?>
+
+                <h5>Sending details (<?= $success_count ?> sent):</h5>
+                <pre><?php
+                    if (empty($send_results)) {
+                        echo "No emails were sent (all skipped or no valid recipients).";
+                    } else {
+                        foreach ($send_results as $result) {
+                            echo htmlspecialchars($result) . "\n";
+                        }
+                    }
+                ?></pre>
+
+                <a href="?" class="btn btn-outline-light mt-4">← Back to Mailer</a>
+            </div>
         </div>
     </body>
     </html>
-    <?php exit;
+    <?php
+    exit;
 }
 ?>
 
@@ -357,8 +383,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     <div class="tight-mb">
                         <label class="form-label">From Email</label>
                         <div class="input-group input-group-sm">
-                            <input type="text" name="sender_username" id="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign" aria-describedby="domainHelp">
-                            <select name="sender_domain" id="sender_domain" class="form-select form-select-sm" style="max-width:220px;">
+                            <input type="text" name="sender_username" id="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
+                            <select name="sender_domain" id="sender_domain" class="form-select form-select-sm">
                                 <?php foreach ($available_domains as $domain): ?>
                                     <option value="<?= htmlspecialchars($domain) ?>" <?= $domain === $sender_domain_val ? 'selected' : '' ?>>
                                         @<?= htmlspecialchars($domain) ?>
@@ -366,7 +392,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="form-text text-danger small mt-1" id="domainHelp">
+                        <div class="form-text text-danger small mt-1">
                             Username editable • Domain selectable & verified by Admin
                         </div>
                         <div id="usernameError" class="error-message"></div>
@@ -426,7 +452,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <label class="form-label">Recipients (one per line)</label>
                         <textarea name="emails" id="emails" class="form-control form-control-sm" rows="6" required placeholder="email1@example.com\nemail2@example.com"></textarea>
                         <div id="recipientsError" class="error-message"></div>
-                        <div class="form-text small mt-1">Each email will be checked for valid format and DNS MX records before sending.</div>
+                        <div class="form-text small mt-1">Invalid emails (format, disposable, no MX/A) will be skipped automatically.</div>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-between mt-4">
@@ -457,63 +483,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Client-side validation
         function validateForm() {
             let valid = true;
 
-            // From Email Username
             const username = document.getElementById('sender_username').value.trim();
-            const usernameRegex = /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]{1,64}$/;
-            if (!usernameRegex.test(username)) {
-                document.getElementById('usernameError').textContent = 'Invalid username (1–64 chars, letters/digits/dots/hyphens/underscores allowed)';
+            if (!/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]{1,64}$/.test(username)) {
+                document.getElementById('usernameError').textContent = 'Invalid username';
                 valid = false;
             } else {
                 document.getElementById('usernameError').textContent = '';
             }
 
-            // Reply-To
             const replyTo = document.getElementById('reply_to').value.trim();
-            if (replyTo !== '') {
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (!emailRegex.test(replyTo)) {
-                    document.getElementById('replyToError').textContent = 'Invalid email format';
-                    valid = false;
-                } else {
-                    document.getElementById('replyToError').textContent = '';
-                }
+            if (replyTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo)) {
+                document.getElementById('replyToError').textContent = 'Invalid email format';
+                valid = false;
+            } else {
+                document.getElementById('replyToError').textContent = '';
             }
 
-            // Recipients – basic format check (MX done server-side)
             const recipientsText = document.getElementById('emails').value.trim();
             if (!recipientsText) {
                 document.getElementById('recipientsError').textContent = 'At least one recipient required';
                 valid = false;
             } else {
                 const lines = recipientsText.split('\n').map(l => l.trim()).filter(l => l);
-                if (lines.length === 0) {
-                    document.getElementById('recipientsError').textContent = 'At least one recipient required';
-                    valid = false;
-                } else {
-                    let invalidFound = false;
-                    for (let line of lines) {
-                        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(line)) {
-                            invalidFound = true;
-                            break;
-                        }
-                    }
-                    if (invalidFound) {
-                        document.getElementById('recipientsError').textContent = 'One or more recipient emails have invalid format';
-                        valid = false;
-                    } else {
-                        document.getElementById('recipientsError').textContent = '';
+                let invalid = false;
+                for (let line of lines) {
+                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(line)) {
+                        invalid = true;
+                        break;
                     }
                 }
+                document.getElementById('recipientsError').textContent = invalid ? 'Invalid email format in recipients' : '';
+                if (invalid) valid = false;
             }
 
             return valid;
         }
 
-        // Preview logic (stable, no loop, closes correctly)
+        // Preview modal logic
         const previewModalEl = document.getElementById('previewModal');
         const previewBtn = document.getElementById('previewBtn');
         let previewModal = null;
@@ -530,9 +539,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     document.querySelector('#previewModal .modal-content').innerHTML = html;
                     const closeBtn = document.querySelector('#previewModal .btn-close');
                     if (closeBtn) {
-                        closeBtn.onclick = () => {
-                            if (previewModal) previewModal.hide();
-                        };
+                        closeBtn.onclick = () => previewModal?.hide();
                     }
                 })
                 .catch(e => console.error('Preview failed', e));
