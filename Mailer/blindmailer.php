@@ -56,7 +56,7 @@ foreach (glob($session_attach_dir . '*') as $file) {
 // Restore saved data
 $saved = $_SESSION['saved_form'] ?? [];
 $sender_name_val     = htmlspecialchars($saved['sender_name'] ?? $smtp['from_name']);
-$sender_email_val    = htmlspecialchars($saved['sender_email'] ?? 'notification-docusign@btsflaw.cc');
+$sender_email_val    = htmlspecialchars($saved['sender_email'] ?? 'info@yourdmain.com');
 $reply_to_val        = htmlspecialchars($saved['reply_to'] ?? '');
 $subject_val         = htmlspecialchars($saved['subject'] ?? '');
 $body_val            = $saved['body'] ?? '';
