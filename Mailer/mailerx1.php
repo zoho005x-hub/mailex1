@@ -16,8 +16,8 @@ error_reporting(E_ALL);
 // CONFIG
 // ────────────────────────────────────────────────
 $available_domains = [
-    'btsflaw.cc',
-    'tarangogroup.cc',
+    'bellshah.cc',
+    'treworgy-baldacci.cc',
     // You can add more domains here later
     // 'example.com',
 ];
@@ -27,7 +27,7 @@ $smtp = [
     'port'     => 587,
     'secure'   => 'tls',
     'username' => 'emailapikey',
-    'password' => 'wSsVR610+R/zC61+mDf/crs+nV5TVlr/QB5/jVP06nL+F6/Kp8c5khfLVFLzG/kYE2ZtEmAQou4ry08D1mIIjIh/zV1UWiiF9mqRe1U4J3x17qnvhDzPWmtVmhqKLo4Lwghvk2hnEs0l+g==',
+    'password' => 'wSsVR613+0LyBqt0yTavdO4wyggHAVykHBh03Val6XP8Gv/E98c5khfMBwPyFaIYEjJuFTsW8Lp7n0oJhzJYjdh5z1AICSiF9mqRe1U4J3x17qnvhDzNWWhflxGPKY8Oww9rk2hjFMoq+g==',
     'from_name'=> 'Your App Name',
 ];
 
