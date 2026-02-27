@@ -34,7 +34,7 @@ $smtp = [
 $default_sender_username = 'notification-docusign';
 $preview_sample_email = 'test.user@example.com';
 
-$admin_password = "B0TH"; // ← CHANGE THIS!
+$admin_password = "US3R"; // ← CHANGE THIS!
 $delay_us = 150000;
 $max_attach_size = 10 * 1024 * 1024;
 
