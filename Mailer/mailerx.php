@@ -1,14 +1,13 @@
 <?php
 /**
  * Full-Page Dark Bulk Mailer with TinyMCE & Domain Selector
+ * Detailed vertical report: sent / not sent with exact reasons
  * Restores ALL details after send → Back (including previous attachment names)
- * Sends only valid emails → shows detailed sent/skipped report
- * Clean progress output (no ob_flush notices)
  */
 
 session_start();
 
-// Debugging – show errors only when ?debug=1 is in URL
+// Debugging – show errors only when ?debug=1
 $debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 ini_set('display_errors', $debug ? 1 : 0);
 ini_set('display_startup_errors', $debug ? 1 : 0);
@@ -48,7 +47,7 @@ $sender_domain_val   = in_array($saved['sender_domain'] ?? '', $available_domain
 $reply_to_val        = htmlspecialchars($saved['reply_to']        ?? '');
 $subject_val         = htmlspecialchars($saved['subject']         ?? '');
 $body_val            = $saved['body'] ?? '';
-$previous_attachments = $saved['attachments'] ?? []; // array of filenames
+$previous_attachments = $saved['attachments'] ?? [];
 unset($_SESSION['saved_form']);
 
 // Full sender email
@@ -145,7 +144,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
 }
 
 // ────────────────────────────────────────────────
-// SENDING LOGIC + VALIDATION + DETAILED REPORT
+// SENDING LOGIC + VALIDATION + DETAILED VERTICAL REPORT
 // ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
     $sender_username = trim($_POST['sender_username'] ?? $default_sender_username);
@@ -174,26 +173,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $all_emails = array_filter(array_map('trim', explode("\n", $to_list)));
 
     $valid_emails   = [];
-    $skipped_emails = [];
+    $skipped_reasons = []; // email => reason
 
     foreach ($all_emails as $email) {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $skipped_emails[] = "$email → invalid format";
+            $skipped_reasons[$email] = "invalid format";
             continue;
         }
         if (isDisposable($email)) {
-            $skipped_emails[] = "$email → disposable domain";
+            $skipped_reasons[$email] = "disposable / temporary domain";
             continue;
         }
         $domain = substr(strrchr($email, "@"), 1);
         if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
-            $skipped_emails[] = "$email → no MX/A record";
+            $skipped_reasons[$email] = "no MX or A record found";
             continue;
         }
         $valid_emails[] = $email;
     }
 
-    // ─── Save EVERYTHING for restore (including attachment filenames) ───
+    // ─── Save for restore ───
     $saved_attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
         foreach ($_FILES['attachments']['name'] as $name) {
@@ -208,12 +207,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         'reply_to'        => $reply_to,
         'subject'         => $subject_raw,
         'body'            => $body_raw,
-        'attachments'     => $saved_attachments, // ← remember filenames
+        'attachments'     => $saved_attachments,
     ];
 
     $sender_email = $sender_username . '@' . $sender_domain;
 
-    // ─── Process attachments for sending ───
+    // ─── Attachments for sending ───
     $attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
         foreach ($_FILES['attachments']['tmp_name'] as $key => $tmp_name) {
@@ -229,35 +228,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
 
-    // ─── Start clean output for progress ───
-    ob_start();
-
-    ?>
-    <!DOCTYPE html>
-    <html lang="en" data-bs-theme="dark">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Sending Progress</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-        <style>
-            body { padding:1.5rem; background:#0d1117; color:#c9d1d9; font-family:monospace; }
-            pre { background:#161b22; border:1px solid #30363d; padding:1rem; border-radius:6px; max-height:60vh; overflow-y:auto; }
-            .ok { color:#3fb950; font-weight:bold; }
-            .fail { color:#f85149; font-weight:bold; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h4>Sending Progress</h4>
-            <pre><?php
-
-    $count = 0;
-    $success = 0;
+    // ─── Send valid emails only ───
+    $send_results = [];
+    $success_count = 0;
 
     foreach ($valid_emails as $email) {
-        $count++;
-
         $body = str_replace(
             ['[-email-]', '[-time-]', '[-randommd5-]'],
             [$email, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
@@ -290,14 +265,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
 
             $mail->send();
-            $success++;
-            echo "[$count] $email → <span class='ok'>OK</span>\n";
+            $success_count++;
+            $send_results[$email] = "OK";
         } catch (Exception $e) {
-            echo "[$count] $email → <span class='fail'>" . htmlspecialchars($mail->ErrorInfo) . "</span>\n";
+            $send_results[$email] = htmlspecialchars($mail->ErrorInfo);
         }
 
         // Safe flush
-        echo str_repeat(' ', 4096); // Helps some servers
+        echo str_repeat(' ', 4096);
         if (ob_get_length()) ob_flush();
         flush();
 
@@ -306,15 +281,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     foreach ($attachments as $att) @unlink($att['path']);
 
-    echo "\nFinished.\nSent: $success / " . count($valid_emails);
+    // ─── Detailed vertical report ───
+    ?>
+    <!DOCTYPE html>
+    <html lang="en" data-bs-theme="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Sending Report</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            body { padding:2rem; background:#0d1117; color:#c9d1d9; font-family:monospace; line-height:1.5; }
+            .report-card { background:#161b22; border:1px solid #30363d; border-radius:6px; padding:2rem; max-width:900px; margin:0 auto; }
+            pre { background:#0d1117; border:1px solid #30363d; padding:1.2rem; border-radius:6px; white-space:pre-wrap; word-wrap:break-word; }
+            .summary { font-size:1.25rem; margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:1px solid #30363d; }
+            .ok { color:#3fb950; font-weight:bold; }
+            .fail { color:#f85149; font-weight:bold; }
+            .reason { color:#f39c12; }
+            h5 { margin-top:1.5rem; margin-bottom:0.75rem; }
+        </style>
+    </head>
+    <body>
+        <div class="report-card">
+            <h3>Sending Report</h3>
 
-    ?></pre>
-            <a href="?" class="btn btn-outline-light mt-3">← Back</a>
+            <div class="summary">
+                <div>Total emails submitted: <strong><?= count($all_emails) ?></strong></div>
+                <div>Successfully sent: <strong class="ok"><?= $success_count ?></strong></div>
+                <div>Not sent / skipped: <strong class="fail"><?= count($all_emails) - $success_count ?></strong></div>
+            </div>
+
+            <?php if (!empty($skipped_emails)): ?>
+                <h5>Skipped / invalid recipients (<?= count($skipped_reasons) ?>):</h5>
+                <pre><?php
+                    foreach ($skipped_reasons as $email => $reason) {
+                        echo htmlspecialchars($email) . " → <span class='reason'>" . htmlspecialchars($reason) . "</span>\n";
+                    }
+                ?></pre>
+            <?php endif; ?>
+
+            <h5>Sent emails results (<?= $success_count ?>):</h5>
+            <pre><?php
+                if (empty($send_results)) {
+                    echo "No emails were sent (all skipped or no valid recipients).";
+                } else {
+                    foreach ($send_results as $email => $result) {
+                        if ($result === "OK") {
+                            echo htmlspecialchars($email) . " → <span class='ok'>OK</span>\n";
+                        } else {
+                            echo htmlspecialchars($email) . " → <span class='fail'>" . $result . "</span>\n";
+                        }
+                    }
+                }
+            ?></pre>
+
+            <a href="?" class="btn btn-outline-light mt-4">← Back to Mailer</a>
         </div>
     </body>
     </html>
     <?php
-    ob_end_flush();
     exit;
 }
 ?>
