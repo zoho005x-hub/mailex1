@@ -1,8 +1,8 @@
 <?php
 /**
  * Full-Page Dark Bulk Mailer with TinyMCE & Domain Selector
- * Sends ONLY valid emails → shows detailed sent/skipped report
- * Persists: From Name, Username, Domain, Reply-To, Subject, Message body
+ * Restores ALL details after send → Back (including previous attachment names)
+ * Sends only valid emails → shows detailed sent/skipped report
  */
 
 session_start();
@@ -18,7 +18,6 @@ error_reporting(E_ALL);
 $available_domains = [
     'btsflaw.cc',
     'tarangogroup.cc',
-    // add more domains here if needed
 ];
 
 $smtp = [
@@ -37,7 +36,7 @@ $admin_password = "US3R"; // ← CHANGE THIS!
 $delay_us = 150000;
 $max_attach_size = 10 * 1024 * 1024;
 
-// Restore saved data (including selected domain)
+// Restore saved data (including attachments filenames)
 $saved = $_SESSION['saved_form'] ?? [];
 $sender_name_val     = htmlspecialchars($saved['sender_name']     ?? $smtp['from_name']);
 $sender_username_val = htmlspecialchars($saved['sender_username'] ?? $default_sender_username);
@@ -47,6 +46,7 @@ $sender_domain_val   = in_array($saved['sender_domain'] ?? '', $available_domain
 $reply_to_val        = htmlspecialchars($saved['reply_to']        ?? '');
 $subject_val         = htmlspecialchars($saved['subject']         ?? '');
 $body_val            = $saved['body'] ?? '';
+$previous_attachments = $saved['attachments'] ?? []; // array of filenames
 unset($_SESSION['saved_form']);
 
 // Full sender email
@@ -154,20 +154,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $body_raw        = $_POST['body'] ?? '';
     $to_list         = trim($_POST['emails'] ?? '');
 
-    // Basic validation (username, domain, reply-to)
+    // Basic validation
     $errors = [];
 
-    if (!isValidEmailUsername($sender_username)) {
-        $errors[] = "Invalid From Email Username.";
-    }
-
-    if (!in_array($sender_domain, $available_domains)) {
-        $errors[] = "Invalid sender domain selected.";
-    }
-
-    if ($reply_to !== '' && !filter_var($reply_to, FILTER_VALIDATE_EMAIL)) {
-        $errors[] = "Invalid Reply-To email address.";
-    }
+    if (!isValidEmailUsername($sender_username)) $errors[] = "Invalid From Email Username.";
+    if (!in_array($sender_domain, $available_domains)) $errors[] = "Invalid sender domain selected.";
+    if ($reply_to !== '' && !filter_var($reply_to, FILTER_VALIDATE_EMAIL)) $errors[] = "Invalid Reply-To email address.";
 
     if (!empty($errors)) {
         echo '<!DOCTYPE html><html lang="en" data-bs-theme="dark"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Error</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-dark text-light p-5"><div class="container"><div class="alert alert-danger"><h4>Validation Errors</h4><ul>';
@@ -176,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
     }
 
-    // ─── Split recipients & classify valid / skipped ───
+    // ─── Filter valid vs skipped ───
     $all_emails = array_filter(array_map('trim', explode("\n", $to_list)));
 
     $valid_emails   = [];
@@ -184,25 +176,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     foreach ($all_emails as $email) {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $skipped_emails[] = "$email → invalid email format";
+            $skipped_emails[] = "$email → invalid format";
             continue;
         }
-
         if (isDisposable($email)) {
-            $skipped_emails[] = "$email → disposable / temporary email domain";
+            $skipped_emails[] = "$email → disposable domain";
             continue;
         }
-
         $domain = substr(strrchr($email, "@"), 1);
         if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
-            $skipped_emails[] = "$email → no MX or A record found";
+            $skipped_emails[] = "$email → no MX/A record";
             continue;
         }
-
         $valid_emails[] = $email;
     }
 
-    // ─── Save form data for restore ───
+    // ─── Save EVERYTHING for restore ───
+    $saved_attachments = [];
+    if (!empty($_FILES['attachments']['name'][0])) {
+        foreach ($_FILES['attachments']['name'] as $name) {
+            if (!empty($name)) $saved_attachments[] = $name;
+        }
+    }
+
     $_SESSION['saved_form'] = [
         'sender_name'     => $sender_name,
         'sender_username' => $sender_username,
@@ -210,11 +206,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         'reply_to'        => $reply_to,
         'subject'         => $subject_raw,
         'body'            => $body_raw,
+        'attachments'     => $saved_attachments, // ← remember filenames
     ];
 
     $sender_email = $sender_username . '@' . $sender_domain;
 
-    // ─── Attachments ───
+    // ─── Process attachments for sending ───
     $attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
         foreach ($_FILES['attachments']['tmp_name'] as $key => $tmp_name) {
@@ -230,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
 
-    // ─── Actual sending ───
+    // ─── Send only valid emails ───
     $send_results = [];
     $success_count = 0;
 
@@ -280,7 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     foreach ($attachments as $att) @unlink($att['path']);
 
-    // ─── Show final report ───
+    // ─── Show detailed report ───
     ?>
     <!DOCTYPE html>
     <html lang="en" data-bs-theme="dark">
@@ -304,20 +301,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <h3>Sending Report</h3>
 
                 <div class="summary mb-4">
-                    <div>Total emails submitted: <strong><?= count($all_emails) ?></strong></div>
+                    <div>Total submitted: <strong><?= count($all_emails) ?></strong></div>
                     <div class="mt-2">Successfully sent: <strong class="ok"><?= $success_count ?></strong></div>
                     <div class="mt-2">Skipped / failed: <strong class="fail"><?= count($all_emails) - $success_count ?></strong></div>
                 </div>
 
                 <?php if (!empty($skipped_emails)): ?>
-                    <h5>Skipped / invalid emails (<?= count($skipped_emails) ?>):</h5>
+                    <h5>Skipped emails (<?= count($skipped_emails) ?>):</h5>
                     <pre class="mb-4"><?php foreach ($skipped_emails as $skip) echo htmlspecialchars($skip) . "\n"; ?></pre>
                 <?php endif; ?>
 
-                <h5>Sending details (<?= $success_count ?> sent):</h5>
+                <h5>Sending details:</h5>
                 <pre><?php
                     if (empty($send_results)) {
-                        echo "No emails were sent (all skipped or no valid recipients).";
+                        echo "No emails were sent.";
                     } else {
                         foreach ($send_results as $result) {
                             echo htmlspecialchars($result) . "\n";
@@ -363,6 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .tox-toolbar { background:#161b22 !important; border-bottom:1px solid #30363d !important; min-height:32px !important; padding:2px 4px !important; }
         .tox-tbtn { min-width:26px !important; padding:2px !important; margin:0 1px !important; }
         .error-message { color:#f85149; font-size:0.85rem; margin-top:0.25rem; }
+        .prev-files { font-size:0.85rem; color:#8b949e; margin-top:0.3rem; }
     </style>
 </head>
 <body>
@@ -417,7 +415,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         </div>
                     </div>
 
-                    <!-- TinyMCE with your API key -->
+                    <!-- TinyMCE -->
                     <script>
                         tinymce.init({
                             selector: '#bodyEditor',
@@ -446,13 +444,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     <div class="tight-mb">
                         <label class="form-label">Attachments</label>
                         <input type="file" name="attachments[]" class="form-control form-control-sm" multiple>
+                        <?php if (!empty($previous_attachments)): ?>
+                            <div class="prev-files">
+                                Previously attached: 
+                                <?= implode(', ', array_map('htmlspecialchars', $previous_attachments)) ?>
+                                <br><small>Re-select the same files if you want to send them again.</small>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="tight-mb">
                         <label class="form-label">Recipients (one per line)</label>
                         <textarea name="emails" id="emails" class="form-control form-control-sm" rows="6" required placeholder="email1@example.com\nemail2@example.com"></textarea>
                         <div id="recipientsError" class="error-message"></div>
-                        <div class="form-text small mt-1">Invalid emails (format, disposable, no MX/A) will be skipped automatically.</div>
+                        <div class="form-text small mt-1">Invalid emails will be skipped automatically (format, disposable, no MX/A).</div>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-between mt-4">
