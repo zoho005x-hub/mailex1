@@ -1,16 +1,17 @@
 <?php
 /**
  * Full-Page Dark Bulk Mailer with TinyMCE & Domain Selector
- * Restores ALL details after send → Back (including previous attachment names)
- * Sends only valid emails → shows detailed sent/skipped report
+ * Server-side temporary attachment storage → files remain after send → Back
+ * Detailed vertical report: sent / not sent with exact reasons
  */
 
 session_start();
 
-// Debugging (remove in production)
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+// Debugging – show errors only when ?debug=1
+$debug = isset($_GET['debug']) && $_GET['debug'] === '1';
+ini_set('display_errors', $debug ? 1 : 0);
+ini_set('display_startup_errors', $debug ? 1 : 0);
+error_reporting($debug ? E_ALL : E_ALL & ~E_NOTICE & ~E_WARNING);
 
 // ────────────────────────────────────────────────
 // CONFIG
@@ -34,9 +35,32 @@ $preview_sample_email = 'test.user@example.com';
 
 $admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
-$max_attach_size = 10 * 1024 * 1024;
+$max_attach_size = 10 * 1024 * 1024; // 10 MB
 
-// Restore saved data (including attachments filenames)
+// Temporary attachment storage
+$attachment_dir = __DIR__ . '/attachments/';
+$attachment_lifetime_seconds = 3600; // 1 hour
+
+// Create attachment dir if not exists
+if (!is_dir($attachment_dir)) {
+    mkdir($attachment_dir, 0755, true);
+}
+
+// Session-based subfolder for this user
+$session_attach_dir = $attachment_dir . session_id() . '/';
+if (!is_dir($session_attach_dir)) {
+    mkdir($session_attach_dir, 0755, true);
+}
+
+// Cleanup old files (simple – run on every send)
+$now = time();
+foreach (glob($session_attach_dir . '*') as $file) {
+    if (is_file($file) && ($now - filemtime($file)) > $attachment_lifetime_seconds) {
+        @unlink($file);
+    }
+}
+
+// Restore saved data
 $saved = $_SESSION['saved_form'] ?? [];
 $sender_name_val     = htmlspecialchars($saved['sender_name']     ?? $smtp['from_name']);
 $sender_username_val = htmlspecialchars($saved['sender_username'] ?? $default_sender_username);
@@ -46,7 +70,16 @@ $sender_domain_val   = in_array($saved['sender_domain'] ?? '', $available_domain
 $reply_to_val        = htmlspecialchars($saved['reply_to']        ?? '');
 $subject_val         = htmlspecialchars($saved['subject']         ?? '');
 $body_val            = $saved['body'] ?? '';
-$previous_attachments = $saved['attachments'] ?? []; // array of filenames
+
+// Previous attachments = files that still exist on disk
+$previous_attachments = [];
+if (!empty($saved['attachments'])) {
+    foreach ($saved['attachments'] as $filename => $server_path) {
+        if (file_exists($server_path)) {
+            $previous_attachments[$filename] = $server_path;
+        }
+    }
+}
 unset($_SESSION['saved_form']);
 
 // Full sender email
@@ -172,47 +205,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $all_emails = array_filter(array_map('trim', explode("\n", $to_list)));
 
     $valid_emails   = [];
-    $skipped_emails = [];
+    $skipped_reasons = [];
 
     foreach ($all_emails as $email) {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $skipped_emails[] = "$email → invalid format";
+            $skipped_reasons[$email] = "invalid format";
             continue;
         }
         if (isDisposable($email)) {
-            $skipped_emails[] = "$email → disposable domain";
+            $skipped_reasons[$email] = "disposable domain";
             continue;
         }
         $domain = substr(strrchr($email, "@"), 1);
         if (!checkdnsrr($domain, 'MX') && !checkdnsrr($domain, 'A')) {
-            $skipped_emails[] = "$email → no MX/A record";
+            $skipped_reasons[$email] = "no MX or A record";
             continue;
         }
         $valid_emails[] = $email;
     }
 
-    // ─── Save EVERYTHING for restore ───
-    $saved_attachments = [];
-    if (!empty($_FILES['attachments']['name'][0])) {
-        foreach ($_FILES['attachments']['name'] as $name) {
-            if (!empty($name)) $saved_attachments[] = $name;
-        }
-    }
+    // ─── Handle attachments (move to server storage) ───
+    $saved_attachments = []; // filename => full server path
 
-    $_SESSION['saved_form'] = [
-        'sender_name'     => $sender_name,
-        'sender_username' => $sender_username,
-        'sender_domain'   => $sender_domain,
-        'reply_to'        => $reply_to,
-        'subject'         => $subject_raw,
-        'body'            => $body_raw,
-        'attachments'     => $saved_attachments, // ← remember filenames
-    ];
-
-    $sender_email = $sender_username . '@' . $sender_domain;
-
-    // ─── Process attachments for sending ───
-    $attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
         foreach ($_FILES['attachments']['tmp_name'] as $key => $tmp_name) {
             if ($_FILES['attachments']['error'][$key] === UPLOAD_ERR_OK) {
@@ -220,14 +234,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $file_size = $_FILES['attachments']['size'][$key];
                 $file_type = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
                 $allowed = ['pdf','jpg','jpeg','png','txt','doc','docx','zip','rar'];
+
                 if (in_array($file_type, $allowed) && $file_size <= $max_attach_size) {
-                    $attachments[] = ['path' => $tmp_name, 'name' => $file_name];
+                    $safe_name = preg_replace('/[^a-zA-Z0-9\._-]/', '_', $file_name);
+                    $dest_path = $session_attach_dir . time() . '_' . $safe_name;
+
+                    if (move_uploaded_file($tmp_name, $dest_path)) {
+                        $saved_attachments[$file_name] = $dest_path;
+                    }
                 }
             }
         }
+    } else if (!empty($previous_attachments)) {
+        // Keep previous files if no new upload
+        $saved_attachments = $previous_attachments;
     }
 
-    // ─── Send only valid emails ───
+    // ─── Save form data for restore ───
+    $_SESSION['saved_form'] = [
+        'sender_name'     => $sender_name,
+        'sender_username' => $sender_username,
+        'sender_domain'   => $sender_domain,
+        'reply_to'        => $reply_to,
+        'subject'         => $subject_raw,
+        'body'            => $body_raw,
+        'attachments'     => $saved_attachments, // filename => path
+    ];
+
+    $sender_email = $sender_username . '@' . $sender_domain;
+
+    // ─── Send valid emails ───
     $send_results = [];
     $success_count = 0;
 
@@ -259,25 +295,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $mail->Body    = $body;
             $mail->AltBody = strip_tags($body);
 
-            foreach ($attachments as $att) {
-                $mail->addAttachment($att['path'], $att['name']);
+            // Attach stored files
+            foreach ($saved_attachments as $orig_name => $path) {
+                if (file_exists($path)) {
+                    $mail->addAttachment($path, $orig_name);
+                }
             }
 
             $mail->send();
             $success_count++;
-            $send_results[] = "$email → OK";
+            $send_results[$email] = "OK";
         } catch (Exception $e) {
-            $send_results[] = "$email → " . htmlspecialchars($mail->ErrorInfo);
+            $send_results[$email] = htmlspecialchars($mail->ErrorInfo);
         }
 
+        // Safe flush
+        echo str_repeat(' ', 4096);
+        if (ob_get_length()) ob_flush();
         flush();
-        ob_flush();
+
         usleep($delay_us);
     }
 
-    foreach ($attachments as $att) @unlink($att['path']);
+    // Cleanup files after send (optional – can keep until lifetime expires)
+    // foreach ($saved_attachments as $path) @unlink($path);
 
-    // ─── Show detailed report ───
+    // ─── Detailed vertical report ───
     ?>
     <!DOCTYPE html>
     <html lang="en" data-bs-theme="dark">
@@ -287,43 +330,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         <title>Sending Report</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
         <style>
-            body { padding:2rem; background:#0d1117; color:#c9d1d9; font-family:monospace; }
-            pre { background:#161b22; border:1px solid #30363d; padding:1rem; border-radius:6px; max-height:60vh; overflow-y:auto; }
-            .ok { color:#3fb950; }
-            .fail { color:#f85149; }
-            .summary { font-size:1.2rem; margin-bottom:1.5rem; }
-            .report-card { background:#161b22; border:1px solid #30363d; border-radius:6px; padding:1.5rem; }
+            body { padding:2rem; background:#0d1117; color:#c9d1d9; font-family:monospace; line-height:1.5; }
+            .report-card { background:#161b22; border:1px solid #30363d; border-radius:6px; padding:2rem; max-width:900px; margin:0 auto; }
+            pre { background:#0d1117; border:1px solid #30363d; padding:1.2rem; border-radius:6px; white-space:pre-wrap; word-wrap:break-word; }
+            .summary { font-size:1.25rem; margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:1px solid #30363d; }
+            .ok { color:#3fb950; font-weight:bold; }
+            .fail { color:#f85149; font-weight:bold; }
+            .reason { color:#f39c12; }
+            h5 { margin-top:1.5rem; margin-bottom:0.75rem; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="report-card">
-                <h3>Sending Report</h3>
+        <div class="report-card">
+            <h3>Sending Report</h3>
 
-                <div class="summary mb-4">
-                    <div>Total submitted: <strong><?= count($all_emails) ?></strong></div>
-                    <div class="mt-2">Successfully sent: <strong class="ok"><?= $success_count ?></strong></div>
-                    <div class="mt-2">Skipped / failed: <strong class="fail"><?= count($all_emails) - $success_count ?></strong></div>
-                </div>
+            <div class="summary">
+                <div>Total emails submitted: <strong><?= count($all_emails) ?></strong></div>
+                <div>Successfully sent: <strong class="ok"><?= $success_count ?></strong></div>
+                <div>Not sent / skipped: <strong class="fail"><?= count($all_emails) - $success_count ?></strong></div>
+            </div>
 
-                <?php if (!empty($skipped_emails)): ?>
-                    <h5>Skipped emails (<?= count($skipped_emails) ?>):</h5>
-                    <pre class="mb-4"><?php foreach ($skipped_emails as $skip) echo htmlspecialchars($skip) . "\n"; ?></pre>
-                <?php endif; ?>
-
-                <h5>Sending details:</h5>
+            <?php if (!empty($skipped_reasons)): ?>
+                <h5>Skipped / invalid recipients (<?= count($skipped_reasons) ?>):</h5>
                 <pre><?php
-                    if (empty($send_results)) {
-                        echo "No emails were sent.";
-                    } else {
-                        foreach ($send_results as $result) {
-                            echo htmlspecialchars($result) . "\n";
-                        }
+                    foreach ($skipped_reasons as $email => $reason) {
+                        echo htmlspecialchars($email) . " → <span class='reason'>" . htmlspecialchars($reason) . "</span>\n";
                     }
                 ?></pre>
+            <?php endif; ?>
 
-                <a href="?" class="btn btn-outline-light mt-4">← Back to Mailer</a>
-            </div>
+            <h5>Sent emails results (<?= $success_count ?>):</h5>
+            <pre><?php
+                if (empty($send_results)) {
+                    echo "No emails were sent (all skipped or no valid recipients).";
+                } else {
+                    foreach ($send_results as $email => $result) {
+                        if ($result === "OK") {
+                            echo htmlspecialchars($email) . " → <span class='ok'>OK</span>\n";
+                        } else {
+                            echo htmlspecialchars($email) . " → <span class='fail'>" . $result . "</span>\n";
+                        }
+                    }
+                }
+            ?></pre>
+
+            <a href="?" class="btn btn-outline-light mt-4">← Back to Mailer</a>
         </div>
     </body>
     </html>
@@ -360,7 +411,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .tox-toolbar { background:#161b22 !important; border-bottom:1px solid #30363d !important; min-height:32px !important; padding:2px 4px !important; }
         .tox-tbtn { min-width:26px !important; padding:2px !important; margin:0 1px !important; }
         .error-message { color:#f85149; font-size:0.85rem; margin-top:0.25rem; }
-        .prev-files { font-size:0.85rem; color:#8b949e; margin-top:0.3rem; }
+        .prev-files { font-size:0.85rem; color:#8b949e; margin-top:0.3rem; background:#21262d; padding:0.5rem; border-radius:4px; }
     </style>
 </head>
 <body>
@@ -445,10 +496,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <label class="form-label">Attachments</label>
                         <input type="file" name="attachments[]" class="form-control form-control-sm" multiple>
                         <?php if (!empty($previous_attachments)): ?>
-                            <div class="prev-files">
-                                Previously attached: 
-                                <?= implode(', ', array_map('htmlspecialchars', $previous_attachments)) ?>
-                                <br><small>Re-select the same files if you want to send them again.</small>
+                            <div class="prev-files mt-2 p-2 bg-dark border border-secondary rounded">
+                                <strong>Previously attached (auto-re-attached):</strong><br>
+                                <?php foreach ($previous_attachments as $name => $path): ?>
+                                    <?= htmlspecialchars($name) ?> (<?= round(filesize($path) / 1024, 1) ?> KB)<br>
+                                <?php endforeach; ?>
+                                <small class="text-muted">Files are kept on server temporarily. Clear browser cache if you want to remove them from form.</small>
                             </div>
                         <?php endif; ?>
                     </div>
