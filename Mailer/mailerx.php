@@ -349,7 +349,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             <input type="text" name="sender_username" id="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
                             <span class="input-group-text">@<?= htmlspecialchars($smtp_domain) ?></span>
                         </div>
-                        <div class="form-text text-danger small">Username editable • Domain fixed & verified in ZeptoMail</div>
+                        <div class="form-text text-danger small">Username editable • Domain fixed & verified by Admin</div>
                         <div id="usernameError" class="error-message"></div>
                     </div>
 
