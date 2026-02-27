@@ -18,7 +18,7 @@ error_reporting($debug ? E_ALL : E_ALL & ~E_NOTICE & ~E_WARNING);
 // CONFIG
 // ────────────────────────────────────────────────
 $smtp = [
-    'host'     => 'smtp.zeptomail.com',
+    'host'     => 'mail.jmmiles.com',
     'port'     => 587,
     'secure'   => 'tls',
     'username' => 'khaddock@jmmiles.com',
