@@ -18,9 +18,8 @@ error_reporting(E_ALL);
 $available_domains = [
     'treworgy-baldacci.cc',
     'bellshah.cc',
-    // Add more domains here if needed, e.g.:
+    // You can add more domains here later
     // 'example.com',
-    // 'anotherdomain.co.za',
 ];
 
 $smtp = [
@@ -205,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $_SESSION['saved_form'] = [
         'sender_name'     => $sender_name,
         'sender_username' => $sender_username,
-        'sender_domain'   => $sender_domain,  // ← now saved too
+        'sender_domain'   => $sender_domain,  // ← saved so it restores
         'reply_to'        => $reply_to,
         'subject'         => $subject_raw,
         'body'            => $body_raw,
@@ -356,10 +355,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     </div>
 
                     <div class="tight-mb">
-                        <label class="form-label">From Email Username</label>
+                        <label class="form-label">From Email</label>
                         <div class="input-group input-group-sm">
-                            <input type="text" name="sender_username" id="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
-                            <select name="sender_domain" class="form-select form-select-sm" style="max-width:220px;">
+                            <input type="text" name="sender_username" id="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign" aria-describedby="domainHelp">
+                            <select name="sender_domain" id="sender_domain" class="form-select form-select-sm" style="max-width:220px;">
                                 <?php foreach ($available_domains as $domain): ?>
                                     <option value="<?= htmlspecialchars($domain) ?>" <?= $domain === $sender_domain_val ? 'selected' : '' ?>>
                                         @<?= htmlspecialchars($domain) ?>
@@ -367,7 +366,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="form-text text-danger small">Username editable • Domain selectable & verified in ZeptoMail</div>
+                        <div class="form-text text-danger small mt-1" id="domainHelp">
+                            Username editable • Domain selectable & verified by Admin
+                        </div>
                         <div id="usernameError" class="error-message"></div>
                     </div>
 
@@ -423,7 +424,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                     <div class="tight-mb">
                         <label class="form-label">Recipients (one per line)</label>
-                        <textarea name="emails" id="emails" class="form-control form-control-sm" rows="6" required placeholder="email1@example.com&#10;email2@example.com"></textarea>
+                        <textarea name="emails" id="emails" class="form-control form-control-sm" rows="6" required placeholder="email1@example.com\nemail2@example.com"></textarea>
                         <div id="recipientsError" class="error-message"></div>
                         <div class="form-text small mt-1">Each email will be checked for valid format and DNS MX records before sending.</div>
                     </div>
