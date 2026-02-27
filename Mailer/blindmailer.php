@@ -117,7 +117,7 @@ function isDisposable($email) {
     return in_array($domain, $list);
 }
 
-// Validation helpers
+// Validation helper
 function isValidEmail($email) {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false && !isDisposable($email);
 }
@@ -364,7 +364,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>4RR0W H43D Spoofer Mailer/title>
+    <title>4RR0W H43D Bulk Mailer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     
