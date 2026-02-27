@@ -1,6 +1,7 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE & Domain Selector
+ * Full-Page Dark Bulk Mailer with TinyMCE
+ * Sender email fully editable + persisted after send → Back
  * Server-side temporary attachment storage → files remain after send → Back
  * Detailed vertical report: sent / not sent with exact reasons
  */
@@ -16,21 +17,21 @@ error_reporting($debug ? E_ALL : E_ALL & ~E_NOTICE & ~E_WARNING);
 // ────────────────────────────────────────────────
 // CONFIG
 // ────────────────────────────────────────────────
-$available_domains = [
+$allowed_domains = [
     'btsflaw.cc',
     'tarangogroup.cc',
+    // Add more verified domains here if needed
 ];
 
 $smtp = [
-    'host'     => 'mail.jmmiles.com',
+    'host'     => 'smtp.zeptomail.com',
     'port'     => 587,
     'secure'   => 'tls',
-    'username' => 'khaddock@jmmiles.com',
-    'password' => 'Colinh22!',
-    'from_name'=> 'Company Name',
+    'username' => 'emailapikey',
+    'password' => 'wSsVR610+R/zC61+mDf/crs+nV5TVlr/QB5/jVP06nL+F6/Kp8c5khfLVFLzG/kYE2ZtEmAQou4ry08D1mIIjIh/zV1UWiiF9mqRe1U4J3x17qnvhDzPWmtVmhqKLo4Lwghvk2hnEs0l+g==',
+    'from_name'=> 'Your App Name',
 ];
 
-$default_sender_username = 'notification-docusign';
 $preview_sample_email = 'test.user@example.com';
 
 $admin_password = "US3R"; // ← CHANGE THIS!
@@ -41,18 +42,16 @@ $max_attach_size = 10 * 1024 * 1024; // 10 MB
 $attachment_dir = __DIR__ . '/attachments/';
 $attachment_lifetime_seconds = 3600; // 1 hour
 
-// Create attachment dir if not exists
 if (!is_dir($attachment_dir)) {
     mkdir($attachment_dir, 0755, true);
 }
 
-// Session-based subfolder for this user
 $session_attach_dir = $attachment_dir . session_id() . '/';
 if (!is_dir($session_attach_dir)) {
     mkdir($session_attach_dir, 0755, true);
 }
 
-// Cleanup old files (simple – run on every send)
+// Cleanup old files
 $now = time();
 foreach (glob($session_attach_dir . '*') as $file) {
     if (is_file($file) && ($now - filemtime($file)) > $attachment_lifetime_seconds) {
@@ -62,16 +61,13 @@ foreach (glob($session_attach_dir . '*') as $file) {
 
 // Restore saved data
 $saved = $_SESSION['saved_form'] ?? [];
-$sender_name_val     = htmlspecialchars($saved['sender_name']     ?? $smtp['from_name']);
-$sender_username_val = htmlspecialchars($saved['sender_username'] ?? $default_sender_username);
-$sender_domain_val   = in_array($saved['sender_domain'] ?? '', $available_domains) 
-                       ? $saved['sender_domain'] 
-                       : $available_domains[0];
-$reply_to_val        = htmlspecialchars($saved['reply_to']        ?? '');
-$subject_val         = htmlspecialchars($saved['subject']         ?? '');
+$sender_name_val     = htmlspecialchars($saved['sender_name'] ?? $smtp['from_name']);
+$sender_email_val    = htmlspecialchars($saved['sender_email'] ?? 'notification-docusign@btsflaw.cc');
+$reply_to_val        = htmlspecialchars($saved['reply_to'] ?? '');
+$subject_val         = htmlspecialchars($saved['subject'] ?? '');
 $body_val            = $saved['body'] ?? '';
 
-// Previous attachments = files that still exist on disk
+// Previous attachments (files still on disk)
 $previous_attachments = [];
 if (!empty($saved['attachments'])) {
     foreach ($saved['attachments'] as $filename => $server_path) {
@@ -81,9 +77,6 @@ if (!empty($saved['attachments'])) {
     }
 }
 unset($_SESSION['saved_form']);
-
-// Full sender email
-$sender_email = $sender_username_val . '@' . $sender_domain_val;
 
 // ────────────────────────────────────────────────
 // AUTH
@@ -179,19 +172,18 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
 // SENDING LOGIC + VALIDATION + DETAILED REPORT
 // ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
-    $sender_username = trim($_POST['sender_username'] ?? $default_sender_username);
-    $sender_domain   = trim($_POST['sender_domain'] ?? $available_domains[0]);
     $sender_name     = trim($_POST['sender_name'] ?? $smtp['from_name']);
+    $sender_email    = trim($_POST['sender_email'] ?? '');
     $reply_to        = trim($_POST['reply_to'] ?? '');
     $subject_raw     = trim($_POST['subject'] ?? '');
     $body_raw        = $_POST['body'] ?? '';
     $to_list         = trim($_POST['emails'] ?? '');
 
-    // Basic validation
+    // ─── Server-side validation ───
     $errors = [];
 
-    if (!isValidEmailUsername($sender_username)) $errors[] = "Invalid From Email Username.";
-    if (!in_array($sender_domain, $available_domains)) $errors[] = "Invalid sender domain selected.";
+    if (empty($sender_name)) $errors[] = "From Name is required.";
+    if (!filter_var($sender_email, FILTER_VALIDATE_EMAIL)) $errors[] = "Invalid From Email address.";
     if ($reply_to !== '' && !filter_var($reply_to, FILTER_VALIDATE_EMAIL)) $errors[] = "Invalid Reply-To email address.";
 
     if (!empty($errors)) {
@@ -201,10 +193,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
     }
 
-    // ─── Filter valid vs skipped ───
+    // ─── Filter valid vs skipped recipients ───
     $all_emails = array_filter(array_map('trim', explode("\n", $to_list)));
-
-    $valid_emails   = [];
+    $valid_emails = [];
     $skipped_reasons = [];
 
     foreach ($all_emails as $email) {
@@ -246,22 +237,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
         }
     } else if (!empty($previous_attachments)) {
-        // Keep previous files if no new upload
         $saved_attachments = $previous_attachments;
     }
 
     // ─── Save form data for restore ───
     $_SESSION['saved_form'] = [
         'sender_name'     => $sender_name,
-        'sender_username' => $sender_username,
-        'sender_domain'   => $sender_domain,
+        'sender_email'    => $sender_email,
         'reply_to'        => $reply_to,
         'subject'         => $subject_raw,
         'body'            => $body_raw,
-        'attachments'     => $saved_attachments, // filename => path
+        'attachments'     => $saved_attachments,
     ];
-
-    $sender_email = $sender_username . '@' . $sender_domain;
 
     // ─── Send valid emails ───
     $send_results = [];
@@ -295,7 +282,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $mail->Body    = $body;
             $mail->AltBody = strip_tags($body);
 
-            // Attach stored files
             foreach ($saved_attachments as $orig_name => $path) {
                 if (file_exists($path)) {
                     $mail->addAttachment($path, $orig_name);
@@ -317,7 +303,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         usleep($delay_us);
     }
 
-    // Cleanup files after send (optional – can keep until lifetime expires)
+    // Optional: cleanup after send
     // foreach ($saved_attachments as $path) @unlink($path);
 
     // ─── Detailed vertical report ───
@@ -402,16 +388,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .card-header { background:#1f6feb; color:white; padding:1rem; text-align:center; font-weight:600; border-radius:0; }
         .card-body { padding:1.5rem 1.5rem 3rem; }
         .form-label { font-size:0.9rem; margin-bottom:0.4rem; font-weight:600; }
-        .form-control-sm, .form-select-sm { font-size:0.9rem; padding:0.5rem 0.75rem; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
+        .form-control-sm { font-size:0.9rem; padding:0.5rem 0.75rem; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
         .btn { font-size:0.95rem; padding:0.5rem 1rem; }
         .form-text { font-size:0.8rem; color:#8b949e; }
         .tight-mb { margin-bottom:0.75rem !important; }
-        .input-group-text { background:#21262d; color:#c9d1d9; border:1px solid #30363d; font-size:0.9rem; }
         .tox-tinymce { border:1px solid #30363d !important; background:#0d1117 !important; }
         .tox-toolbar { background:#161b22 !important; border-bottom:1px solid #30363d !important; min-height:32px !important; padding:2px 4px !important; }
         .tox-tbtn { min-width:26px !important; padding:2px !important; margin:0 1px !important; }
         .error-message { color:#f85149; font-size:0.85rem; margin-top:0.25rem; }
         .prev-files { font-size:0.85rem; color:#8b949e; margin-top:0.3rem; background:#21262d; padding:0.5rem; border-radius:4px; }
+        .input-group-text { background:#21262d; color:#c9d1d9; border:1px solid #30363d; font-size:0.9rem; }
+        .is-valid { border-color:#3fb950 !important; background:#1e3a2f !important; }
+        .is-invalid { border-color:#f85149 !important; background:#3d1f1f !important; }
     </style>
 </head>
 <body>
@@ -430,26 +418,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     </div>
 
                     <div class="tight-mb">
-                        <label class="form-label">From Email</label>
-                        <div class="input-group input-group-sm">
-                            <input type="text" name="sender_username" id="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
-                            <select name="sender_domain" id="sender_domain" class="form-select form-select-sm">
-                                <?php foreach ($available_domains as $domain): ?>
-                                    <option value="<?= htmlspecialchars($domain) ?>" <?= $domain === $sender_domain_val ? 'selected' : '' ?>>
-                                        @<?= htmlspecialchars($domain) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                        <label class="form-label">From Email (editable)</label>
+                        <input type="email" name="sender_email" id="sender_email" class="form-control form-control-sm" value="<?= $sender_email_val ?>" required placeholder="yourname@yourdomain.com">
+                        <div class="form-text small mt-1 text-muted">
+                            Enter full email address. Use verified domains for best deliverability.
                         </div>
-                        <div class="form-text text-danger small mt-1">
-                            Username editable • Domain selectable & verified by Admin
-                        </div>
-                        <div id="usernameError" class="error-message"></div>
+                        <div id="senderEmailError" class="error-message"></div>
                     </div>
 
                     <div class="tight-mb">
                         <label class="form-label">Reply-To (optional)</label>
-                        <input type="email" name="reply_to" id="reply_to" class="form-control form-control-sm" value="<?= $reply_to_val ?>" placeholder="replies@domain.com">
+                        <input type="email" name="reply_to" id="reply_to" class="form-control form-control-sm" value="<?= $reply_to_val ?>" placeholder="replies@yourdomain.com">
                         <div id="replyToError" class="error-message"></div>
                     </div>
 
@@ -501,7 +480,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                 <?php foreach ($previous_attachments as $name => $path): ?>
                                     <?= htmlspecialchars($name) ?> (<?= round(filesize($path) / 1024, 1) ?> KB)<br>
                                 <?php endforeach; ?>
-                                <small class="text-muted">Files are kept on server temporarily. Clear browser cache if you want to remove them from form.</small>
+                                <small class="text-muted">Files are kept on server temporarily. Clear browser cache if you want to remove them.</small>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -544,22 +523,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         function validateForm() {
             let valid = true;
 
-            const username = document.getElementById('sender_username').value.trim();
-            if (!/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]{1,64}$/.test(username)) {
-                document.getElementById('usernameError').textContent = 'Invalid username';
+            // From Email validation
+            const senderEmail = document.getElementById('sender_email').value.trim();
+            const emailErrorEl = document.getElementById('senderEmailError');
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(senderEmail)) {
+                emailErrorEl.textContent = 'Please enter a valid full email address';
+                document.getElementById('sender_email').classList.add('is-invalid');
+                document.getElementById('sender_email').classList.remove('is-valid');
                 valid = false;
             } else {
-                document.getElementById('usernameError').textContent = '';
+                emailErrorEl.textContent = '';
+                document.getElementById('sender_email').classList.remove('is-invalid');
+                document.getElementById('sender_email').classList.add('is-valid');
             }
 
+            // Reply-To validation
             const replyTo = document.getElementById('reply_to').value.trim();
-            if (replyTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo)) {
-                document.getElementById('replyToError').textContent = 'Invalid email format';
-                valid = false;
-            } else {
-                document.getElementById('replyToError').textContent = '';
+            if (replyTo !== '') {
+                if (!emailRegex.test(replyTo)) {
+                    document.getElementById('replyToError').textContent = 'Invalid email format';
+                    valid = false;
+                } else {
+                    document.getElementById('replyToError').textContent = '';
+                }
             }
 
+            // Recipients basic format check
             const recipientsText = document.getElementById('emails').value.trim();
             if (!recipientsText) {
                 document.getElementById('recipientsError').textContent = 'At least one recipient required';
@@ -568,12 +558,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 const lines = recipientsText.split('\n').map(l => l.trim()).filter(l => l);
                 let invalid = false;
                 for (let line of lines) {
-                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(line)) {
+                    if (!emailRegex.test(line)) {
                         invalid = true;
                         break;
                     }
                 }
-                document.getElementById('recipientsError').textContent = invalid ? 'Invalid email format in recipients' : '';
+                document.getElementById('recipientsError').textContent = invalid ? 'One or more recipient emails have invalid format' : '';
                 if (invalid) valid = false;
             }
 
