@@ -3,14 +3,16 @@
  * Full-Page Dark Bulk Mailer with TinyMCE & Domain Selector
  * Restores ALL details after send → Back (including previous attachment names)
  * Sends only valid emails → shows detailed sent/skipped report
+ * Clean progress output (no ob_flush notices)
  */
 
 session_start();
 
-// Debugging (remove in production)
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+// Debugging – show errors only when ?debug=1 is in URL
+$debug = isset($_GET['debug']) && $_GET['debug'] === '1';
+ini_set('display_errors', $debug ? 1 : 0);
+ini_set('display_startup_errors', $debug ? 1 : 0);
+error_reporting($debug ? E_ALL : E_ALL & ~E_NOTICE & ~E_WARNING);
 
 // ────────────────────────────────────────────────
 // CONFIG
@@ -191,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $valid_emails[] = $email;
     }
 
-    // ─── Save EVERYTHING for restore ───
+    // ─── Save EVERYTHING for restore (including attachment filenames) ───
     $saved_attachments = [];
     if (!empty($_FILES['attachments']['name'][0])) {
         foreach ($_FILES['attachments']['name'] as $name) {
@@ -227,11 +229,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
 
-    // ─── Send only valid emails ───
-    $send_results = [];
-    $success_count = 0;
+    // ─── Start clean output for progress ───
+    ob_start();
+
+    ?>
+    <!DOCTYPE html>
+    <html lang="en" data-bs-theme="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Sending Progress</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            body { padding:1.5rem; background:#0d1117; color:#c9d1d9; font-family:monospace; }
+            pre { background:#161b22; border:1px solid #30363d; padding:1rem; border-radius:6px; max-height:60vh; overflow-y:auto; }
+            .ok { color:#3fb950; font-weight:bold; }
+            .fail { color:#f85149; font-weight:bold; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h4>Sending Progress</h4>
+            <pre><?php
+
+    $count = 0;
+    $success = 0;
 
     foreach ($valid_emails as $email) {
+        $count++;
+
         $body = str_replace(
             ['[-email-]', '[-time-]', '[-randommd5-]'],
             [$email, date('Y-m-d H:i:s'), md5(uniqid(rand(), true))],
@@ -264,70 +290,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
 
             $mail->send();
-            $success_count++;
-            $send_results[] = "$email → OK";
+            $success++;
+            echo "[$count] $email → <span class='ok'>OK</span>\n";
         } catch (Exception $e) {
-            $send_results[] = "$email → " . htmlspecialchars($mail->ErrorInfo);
+            echo "[$count] $email → <span class='fail'>" . htmlspecialchars($mail->ErrorInfo) . "</span>\n";
         }
 
+        // Safe flush
+        echo str_repeat(' ', 4096); // Helps some servers
+        if (ob_get_length()) ob_flush();
         flush();
-        ob_flush();
+
         usleep($delay_us);
     }
 
     foreach ($attachments as $att) @unlink($att['path']);
 
-    // ─── Show detailed report ───
-    ?>
-    <!DOCTYPE html>
-    <html lang="en" data-bs-theme="dark">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Sending Report</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-        <style>
-            body { padding:2rem; background:#0d1117; color:#c9d1d9; font-family:monospace; }
-            pre { background:#161b22; border:1px solid #30363d; padding:1rem; border-radius:6px; max-height:60vh; overflow-y:auto; }
-            .ok { color:#3fb950; }
-            .fail { color:#f85149; }
-            .summary { font-size:1.2rem; margin-bottom:1.5rem; }
-            .report-card { background:#161b22; border:1px solid #30363d; border-radius:6px; padding:1.5rem; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="report-card">
-                <h3>Sending Report</h3>
+    echo "\nFinished.\nSent: $success / " . count($valid_emails);
 
-                <div class="summary mb-4">
-                    <div>Total submitted: <strong><?= count($all_emails) ?></strong></div>
-                    <div class="mt-2">Successfully sent: <strong class="ok"><?= $success_count ?></strong></div>
-                    <div class="mt-2">Skipped / failed: <strong class="fail"><?= count($all_emails) - $success_count ?></strong></div>
-                </div>
-
-                <?php if (!empty($skipped_emails)): ?>
-                    <h5>Skipped emails (<?= count($skipped_emails) ?>):</h5>
-                    <pre class="mb-4"><?php foreach ($skipped_emails as $skip) echo htmlspecialchars($skip) . "\n"; ?></pre>
-                <?php endif; ?>
-
-                <h5>Sending details:</h5>
-                <pre><?php
-                    if (empty($send_results)) {
-                        echo "No emails were sent.";
-                    } else {
-                        foreach ($send_results as $result) {
-                            echo htmlspecialchars($result) . "\n";
-                        }
-                    }
-                ?></pre>
-
-                <a href="?" class="btn btn-outline-light mt-4">← Back to Mailer</a>
-            </div>
+    ?></pre>
+            <a href="?" class="btn btn-outline-light mt-3">← Back</a>
         </div>
     </body>
     </html>
     <?php
+    ob_end_flush();
     exit;
 }
 ?>
@@ -415,7 +402,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         </div>
                     </div>
 
-                    <!-- TinyMCE -->
+                    <!-- TinyMCE with your API key -->
                     <script>
                         tinymce.init({
                             selector: '#bodyEditor',
@@ -446,9 +433,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <input type="file" name="attachments[]" class="form-control form-control-sm" multiple>
                         <?php if (!empty($previous_attachments)): ?>
                             <div class="prev-files">
-                                Previously attached: 
-                                <?= implode(', ', array_map('htmlspecialchars', $previous_attachments)) ?>
-                                <br><small>Re-select the same files if you want to send them again.</small>
+                                Previously attached: <?= implode(', ', array_map('htmlspecialchars', $previous_attachments)) ?><br>
+                                <small>Re-select the same files if you want to send them again.</small>
                             </div>
                         <?php endif; ?>
                     </div>
